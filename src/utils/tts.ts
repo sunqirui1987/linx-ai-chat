@@ -43,31 +43,7 @@ export class TTSManager {
 
   // 人格对应的语音参数
   private personalityVoices: { [key: string]: VoiceParams } = {
-    default: {
-      voice: 'zh_female_qingxin',
-      speed: 1.0,
-      volume: 0.8,
-      pitch: 0,
-      emotion: 'neutral',
-      style: 'casual'
-    },
-    tsundere: {
-      voice: 'zh_female_keai',
-      speed: 1.1,
-      volume: 0.9,
-      pitch: 2,
-      emotion: 'happy',
-      style: 'cute'
-    },
-    tech: {
-      voice: 'zh_female_zhiyu',
-      speed: 0.9,
-      volume: 0.7,
-      pitch: -1,
-      emotion: 'neutral',
-      style: 'professional'
-    },
-    warm: {
+    angel: {
       voice: 'zh_female_wenrou',
       speed: 0.8,
       volume: 0.9,
@@ -75,13 +51,13 @@ export class TTSManager {
       emotion: 'gentle',
       style: 'warm'
     },
-    defensive: {
+    demon: {
       voice: 'zh_female_yanli',
-      speed: 1.0,
+      speed: 1.2,
       volume: 0.8,
-      pitch: 0,
+      pitch: -1,
       emotion: 'serious',
-      style: 'formal'
+      style: 'dark'
     }
   }
 
@@ -92,7 +68,7 @@ export class TTSManager {
   // 文本转语音
   async textToSpeech(
     text: string, 
-    personality: string = 'default',
+    personality: string = 'angel',
     customParams?: Partial<VoiceParams>
   ): Promise<TTSResponse> {
     try {
@@ -366,7 +342,7 @@ export class TTSManager {
   // 清空缓存
   clearCache(): void {
     // 释放所有缓存的音频URL
-    for (const url of this.audioCache.values()) {
+    for (const url of Array.from(this.audioCache.values())) {
       URL.revokeObjectURL(url)
     }
     this.audioCache.clear()
@@ -397,7 +373,7 @@ export class TTSManager {
   // 批量生成语音
   async batchTextToSpeech(
     texts: string[],
-    personality: string = 'default',
+    personality: string = 'angel',
     onProgress?: (progress: number) => void
   ): Promise<TTSResponse[]> {
     const results: TTSResponse[] = []

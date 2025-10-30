@@ -37,6 +37,8 @@ export interface SendMessageResponse {
   suggestions?: string[]
   memoryUnlocked?: any[]
   personalityChanged?: boolean
+  currentPersonality?: string
+  personalityChangeReason?: string
   audioUrl?: string
 }
 
@@ -45,7 +47,7 @@ export const useChatStore = defineStore('chat', {
     sessions: [] as ChatSession[],
     currentSessionId: null as string | null,
     messages: [] as ChatMessage[],
-    currentPersonality: 'default' as string,
+    currentPersonality: 'angel' as string,
     isLoading: false,
     isTyping: false,
     conversationCount: 0,
@@ -79,6 +81,62 @@ export const useChatStore = defineStore('chat', {
   },
 
   actions: {
+    // 保存聊天数据到本地存储
+    saveChatDataToLocal() {
+      try {
+        const chatData = {
+          sessions: this.sessions,
+          messages: this.messages,
+          currentSessionId: this.currentSessionId,
+          currentPersonality: this.currentPersonality,
+          conversationCount: this.conversationCount,
+          lastPersonalitySwitch: this.lastPersonalitySwitch,
+          lastSaved: new Date().toISOString()
+        }
+        localStorage.setItem('chat_data', JSON.stringify(chatData))
+        console.log('聊天数据已保存到本地存储')
+      } catch (error) {
+        console.error('保存聊天数据到本地存储失败:', error)
+      }
+    },
+
+    // 从本地存储加载聊天数据
+    loadChatDataFromLocal() {
+      try {
+        const savedData = localStorage.getItem('chat_data')
+        if (savedData) {
+          const chatData = JSON.parse(savedData)
+          
+          // 恢复数据，但转换时间戳
+          this.sessions = chatData.sessions || []
+          this.messages = (chatData.messages || []).map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }))
+          this.currentSessionId = chatData.currentSessionId
+          this.currentPersonality = chatData.currentPersonality || 'angel'
+          this.conversationCount = chatData.conversationCount || 0
+          this.lastPersonalitySwitch = chatData.lastPersonalitySwitch ? new Date(chatData.lastPersonalitySwitch) : null
+          
+          console.log('从本地存储加载聊天数据成功')
+          return true
+        }
+      } catch (error) {
+        console.error('从本地存储加载聊天数据失败:', error)
+      }
+      return false
+    },
+
+    // 清除本地存储的聊天数据
+    clearLocalChatData() {
+      try {
+        localStorage.removeItem('chat_data')
+        console.log('本地聊天数据已清除')
+      } catch (error) {
+        console.error('清除本地聊天数据失败:', error)
+      }
+    },
+
     // 等待Socket连接建立
     async waitForSocketConnection(maxWaitTime = 10000) {
       const startTime = Date.now()
@@ -119,12 +177,31 @@ export const useChatStore = defineStore('chat', {
         })
         
         if (response.data.success) {
-          this.sessions = response.data.data.sessions || []
+          const serverSessions = response.data.data.sessions || []
+          
+          // 检查当前选中的会话是否还存在于服务器返回的会话列表中
+          const currentSessionExists = serverSessions.some((s: ChatSession) => s.id === this.currentSessionId)
+          
+          // 更新会话列表
+          this.sessions = serverSessions
+          
+          // 清理不存在的会话的消息
+          const validSessionIds = new Set(serverSessions.map((s: ChatSession) => s.id))
+          this.messages = this.messages.filter(m => !m.session_id || validSessionIds.has(m.session_id))
+          
+          // 如果当前选中的会话不存在，重新选择
+          if (!currentSessionExists) {
+            this.currentSessionId = null
+            this.currentPersonality = 'angel'
+          }
           
           // 如果有会话但没有选中的会话，选中第一个
           if (this.sessions.length > 0 && !this.currentSessionId) {
             await this.selectSession(this.sessions[0].id)
           }
+          
+          // 保存到本地存储
+          this.saveChatDataToLocal()
         }
       } catch (error) {
         console.error('加载会话失败:', error)
@@ -198,7 +275,7 @@ export const useChatStore = defineStore('chat', {
           await this.selectSession(newSession.id)
           
           // 重置人格为默认
-          this.currentPersonality = 'default'
+          this.currentPersonality = 'angel'
           
           return newSession
         } else {
@@ -227,14 +304,41 @@ export const useChatStore = defineStore('chat', {
               await this.selectSession(this.sessions[0].id)
             } else {
               this.currentSessionId = null
-              this.currentPersonality = 'default'
+              this.currentPersonality = 'angel'
             }
           }
+          
+          // 保存到本地存储
+          this.saveChatDataToLocal()
         } else {
           throw new Error(response.data.message || '删除会话失败')
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('删除会话失败:', error)
+        
+        // 如果是404错误，说明会话在后端已经不存在，从前端状态中移除
+        if (error.response?.status === 404) {
+          console.log(`会话 ${sessionId} 在后端不存在，从本地状态中移除`)
+          this.sessions = this.sessions.filter(s => s.id !== sessionId)
+          this.messages = this.messages.filter(m => m.session_id !== sessionId)
+          
+          // 如果删除的是当前会话，选择另一个会话
+          if (this.currentSessionId === sessionId) {
+            if (this.sessions.length > 0) {
+              await this.selectSession(this.sessions[0].id)
+            } else {
+              this.currentSessionId = null
+              this.currentPersonality = 'angel'
+            }
+          }
+          
+          // 保存到本地存储
+          this.saveChatDataToLocal()
+          
+          // 不抛出错误，因为会话已经被成功移除
+          return
+        }
+        
         throw error
       }
     },
@@ -262,7 +366,10 @@ export const useChatStore = defineStore('chat', {
           this.messages.push(data.aiResponse)
           
           // 更新当前人格
-          if (data.aiResponse.personality) {
+          if (data.personalityChanged && data.currentPersonality) {
+            this.currentPersonality = data.currentPersonality
+            this.lastPersonalitySwitch = new Date()
+          } else if (data.aiResponse.personality) {
             this.currentPersonality = data.aiResponse.personality
           }
           
@@ -275,12 +382,17 @@ export const useChatStore = defineStore('chat', {
             session.updated_at = data.aiResponse.created_at
           }
           
+          // 保存到本地存储
+          this.saveChatDataToLocal()
+          
           return {
             message: data.message,
             aiResponse: data.aiResponse,
             audioUrl: data.audioUrl,
             memoryUnlocked: data.memoryUnlocked,
-            personalityChanged: data.personalityChanged
+            personalityChanged: data.personalityChanged,
+            currentPersonality: data.currentPersonality,
+            personalityChangeReason: data.personalityChangeReason
           }
         } else {
           throw new Error(response.data.message || '发送消息失败')
@@ -323,7 +435,7 @@ export const useChatStore = defineStore('chat', {
           this.messages = this.messages.filter(m => m.session_id !== this.currentSessionId)
           
           // 重置人格
-          this.currentPersonality = 'default'
+          this.currentPersonality = 'angel'
           
           // 更新会话信息
           const session = this.sessions.find(s => s.id === this.currentSessionId)
@@ -345,7 +457,7 @@ export const useChatStore = defineStore('chat', {
       this.sessions = []
       this.messages = []
       this.currentSessionId = null
-      this.currentPersonality = 'default'
+      this.currentPersonality = 'angel'
     }
   }
 })

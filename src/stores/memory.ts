@@ -1,5 +1,29 @@
 import { defineStore } from 'pinia'
-import { memoryFragments, memoryUnlockManager, type MemoryFragment } from '@/data/memory-fragments'
+import { memoryFragments, memoryUnlockManager } from '@/data/memory-fragments'
+
+export interface MemoryFragment {
+  id: string
+  title: string
+  content: string
+  category: string
+  rarity: 'common' | 'rare' | 'legendary'
+  is_unlocked: boolean
+  unlocked_at?: Date | null
+  unlock_condition?: string
+  unlockConditions?: UnlockCondition
+  emotionalValue: number
+  tags: string[]
+  isUnlocked?: boolean
+  unlockedAt?: Date | null
+}
+
+export interface UnlockCondition {
+  type: 'conversation_count' | 'emotion' | 'keyword' | 'time_based' | 'personality_switch' | 'time_gap' | 'complex'
+  value: any
+  threshold?: number
+  description?: string
+  conditions?: UnlockCondition[]
+}
 
 export const useMemoryStore = defineStore('memory', {
   state: () => ({
@@ -132,10 +156,11 @@ export const useMemoryStore = defineStore('memory', {
 
     async checkUnlockConditions(userMessage: string, emotion?: any, conversationCount: number = 0) {
       // 使用记忆解锁管理器检查解锁条件
-      const newlyUnlocked = memoryUnlockManager.checkAndUnlock(
+      const newlyUnlocked = memoryUnlockManager.checkUnlockConditions(
         userMessage,
         emotion,
         conversationCount,
+        0, // personalitySwitchCount
         new Date()
       )
       
@@ -145,13 +170,17 @@ export const useMemoryStore = defineStore('memory', {
           const localFragment = this.fragments.find(f => f.id === unlockedFragment.id)
           if (localFragment) {
             localFragment.is_unlocked = true
-            localFragment.unlocked_at = unlockedFragment.unlocked_at
+            localFragment.unlocked_at = unlockedFragment.unlockedAt
           }
         })
         
         // 更新解锁历史
         const newHistory = memoryUnlockManager.getUnlockHistory()
-        this.unlockHistory = newHistory
+        this.unlockHistory = newHistory.map(h => ({
+          memoryId: h.fragmentId,
+          unlockedAt: h.unlockedAt,
+          trigger: h.trigger
+        }))
         
         // 保存到本地存储
         this.saveMemoryState()
@@ -162,20 +191,19 @@ export const useMemoryStore = defineStore('memory', {
 
     shouldUnlockFragment(fragment: MemoryFragment, userMessage: string, emotion?: any): boolean {
       // 使用记忆解锁管理器的逻辑
-      return memoryUnlockManager.checkAndUnlock(userMessage, emotion, 0).some(f => f.id === fragment.id)
+      return memoryUnlockManager.checkUnlockConditions(userMessage, emotion, 0).some(f => f.id === fragment.id)
     },
 
     async unlockFragment(id: string) {
-      const success = memoryUnlockManager.manualUnlock(id)
-      if (success) {
-        const fragment = this.getFragmentById(id)
-        if (fragment) {
-          fragment.is_unlocked = true
-          fragment.unlocked_at = new Date()
-          this.saveMemoryState()
-        }
+      // 手动解锁逻辑
+      const fragment = this.getFragmentById(id)
+      if (fragment && !fragment.is_unlocked) {
+        fragment.is_unlocked = true
+        fragment.unlocked_at = new Date()
+        this.saveMemoryState()
+        return true
       }
-      return success
+      return false
     },
 
     searchFragments(query: string): MemoryFragment[] {
@@ -232,7 +260,13 @@ export const useMemoryStore = defineStore('memory', {
 
     // 获取记忆统计信息
     getMemoryStats() {
-      return memoryUnlockManager.getUnlockProgress()
+      return {
+        totalFragments: this.fragments.length,
+        unlockedCount: this.unlockedCount,
+        unlockedByRarity: this.rarityStats,
+        recentUnlocks: this.recentlyUnlocked,
+        unlockProgress: this.progressPercentage / 100
+      }
     },
 
     // 获取解锁历史

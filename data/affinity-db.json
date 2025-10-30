@@ -1,0 +1,22 @@
+{
+  "affinity": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "demon_affinity": 50,
+      "angel_affinity": 50,
+      "corruption_value": 50,
+      "purity_value": 50,
+      "total_choices": 0,
+      "demon_choices": 0,
+      "angel_choices": 0,
+      "updated_at": "2025-10-30T07:40:05.535Z",
+      "created_at": "2025-10-30T07:40:05.535Z"
+    }
+  ],
+  "affinity_choices": [],
+  "counters": {
+    "affinity": 1,
+    "affinity_choices": 0
+  }
+}

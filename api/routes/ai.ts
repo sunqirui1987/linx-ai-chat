@@ -6,42 +6,33 @@ const router = express.Router()
 // 生成AI回应
 router.post('/generate', async (req, res) => {
   try {
-    const { 
-      message, 
-      personality = 'default', 
-      emotion, 
-      memoryFragments = [], 
-      sessionContext = {} 
+    const {
+      content,
+      personality = 'angel',
+      emotion = { type: 'neutral', intensity: 0.5 },
+      history = [],
+      memoryFragments = []
     } = req.body
 
-    if (!message || !message.trim()) {
+    if (!content || !content.trim()) {
       return res.status(400).json({
-        error: 'Message is required for AI generation'
+        error: 'Content is required for AI generation'
       })
     }
 
     const response = await aiService.generateResponse({
-      message: message.trim(),
+      content: content.trim(),
       personality,
       emotion,
-      memoryFragments,
-      sessionContext
+      history,
+      memoryFragments
     })
-
-    if (!response.success) {
-      return res.status(500).json({
-        error: response.error || 'Failed to generate AI response'
-      })
-    }
 
     res.json({
       success: true,
       data: {
         content: response.content,
-        personality: response.personality,
-        emotion: response.emotion,
-        memoryTriggered: response.memoryTriggered,
-        usage: response.usage
+        suggestions: response.suggestions
       }
     })
   } catch (error) {
@@ -56,16 +47,16 @@ router.post('/generate', async (req, res) => {
 router.post('/generate/stream', async (req, res) => {
   try {
     const { 
-      message, 
-      personality = 'default', 
-      emotion, 
-      memoryFragments = [], 
-      sessionContext = {} 
+      content, 
+      personality = 'angel', 
+      emotion = { type: 'neutral', intensity: 0.5 }, 
+      history = [],
+      memoryFragments = []
     } = req.body
 
-    if (!message || !message.trim()) {
+    if (!content || !content.trim()) {
       return res.status(400).json({
-        error: 'Message is required for AI generation'
+        error: 'Content is required for AI generation'
       })
     }
 
@@ -78,34 +69,20 @@ router.post('/generate/stream', async (req, res) => {
       'Access-Control-Allow-Headers': 'Cache-Control'
     })
 
-    const stream = await aiService.generateResponseStream({
-      message: message.trim(),
+    await aiService.generateStreamResponse({
+      content: content.trim(),
       personality,
       emotion,
+      history,
       memoryFragments,
-      sessionContext
+      onChunk: (chunk) => {
+        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`)
+      }
     })
 
-    // 处理流式响应
-    stream.on('data', (chunk) => {
-      res.write(`data: ${JSON.stringify(chunk)}\n\n`)
-    })
-
-    stream.on('end', () => {
-      res.write('data: [DONE]\n\n')
-      res.end()
-    })
-
-    stream.on('error', (error) => {
-      console.error('Stream error:', error)
-      res.write(`data: ${JSON.stringify({ error: 'Stream error' })}\n\n`)
-      res.end()
-    })
-
-    // 处理客户端断开连接
-    req.on('close', () => {
-      stream.destroy()
-    })
+    // 结束流
+    res.write('data: [DONE]\n\n')
+    res.end()
 
   } catch (error) {
     console.error('Error generating AI stream:', error)
@@ -118,13 +95,9 @@ router.post('/generate/stream', async (req, res) => {
 // 生成建议回复
 router.post('/suggestions', async (req, res) => {
   try {
-    const { personality = 'default', context = '', emotion } = req.body
+    const { personality = 'angel', content = '' } = req.body
 
-    const suggestions = await aiService.generateSuggestions({
-      personality,
-      context,
-      emotion
-    })
+    const suggestions = await aiService.generateSuggestions(content, personality)
 
     res.json({
       success: true,
@@ -292,18 +265,18 @@ router.post('/generate/batch', async (req, res) => {
     for (const message of messages) {
       try {
         const response = await aiService.generateResponse({
-          message: message.content || message,
+          content: message.content || message,
           personality,
-          emotion: message.emotion,
-          memoryFragments: message.memoryFragments || [],
-          sessionContext: message.sessionContext || {}
+          emotion: message.emotion || { type: 'neutral', intensity: 0.5 },
+          history: message.history || [],
+          memoryFragments: message.memoryFragments || []
         })
 
         results.push({
           input: message,
-          success: response.success,
-          output: response.success ? response.content : null,
-          error: response.success ? null : response.error
+          success: true,
+          output: response.content,
+          error: null
         })
       } catch (error) {
         results.push({
@@ -330,14 +303,20 @@ router.post('/generate/batch', async (req, res) => {
 // 获取fallback回应
 router.post('/fallback', async (req, res) => {
   try {
-    const { personality = 'default', context = '' } = req.body
+    const { personality = 'angel', emotion = { type: 'neutral', intensity: 0.5 } } = req.body
 
-    const fallbackResponse = aiService.getFallbackResponse(personality, context)
+    // 使用简单的fallback响应
+    const fallbackMessages = {
+      angel: '我在这里陪伴你，有什么想聊的吗？',
+      demon: '哼，有什么事就直说吧...'
+    }
+
+    const content = fallbackMessages[personality as keyof typeof fallbackMessages] || fallbackMessages.angel
 
     res.json({
       success: true,
       data: {
-        content: fallbackResponse,
+        content,
         personality,
         isFallback: true
       }
@@ -353,15 +332,15 @@ router.post('/fallback', async (req, res) => {
 // 健康检查
 router.get('/health', async (req, res) => {
   try {
-    const healthCheck = await aiService.testConnection('健康检查')
+    const healthCheck = await aiService.testConnection()
 
     res.json({
       success: true,
       data: {
-        status: healthCheck.success ? 'healthy' : 'unhealthy',
-        aiWorking: healthCheck.success,
+        status: healthCheck ? 'healthy' : 'unhealthy',
+        aiWorking: healthCheck,
         timestamp: new Date().toISOString(),
-        details: healthCheck
+        details: { connected: healthCheck }
       }
     })
   } catch (error) {

@@ -1,7 +1,8 @@
+vue
 <template>
-  <div class="w-80 bg-gray-800 border-r border-gray-700 flex flex-col h-full">
+  <div class="h-full bg-gray-800 flex flex-col">
     <!-- 顶部标题和新建按钮 -->
-    <div class="p-4 border-b border-gray-700">
+    <div class="p-4 border-b border-gray-700 flex-shrink-0">
       <div class="flex items-center justify-between mb-4">
         <h1 class="text-xl font-bold text-white flex items-center">
           <MessageCircle class="h-6 w-6 mr-2 text-blue-400" />
@@ -29,7 +30,7 @@
     </div>
 
     <!-- 会话列表 -->
-    <div class="flex-1 overflow-y-auto">
+    <div class="flex-1 overflow-y-auto custom-scrollbar">
       <div v-if="filteredSessions.length === 0" class="p-4 text-center text-gray-500">
         <MessageSquare class="h-12 w-12 mx-auto mb-2 opacity-50" />
         <p class="text-sm">{{ searchQuery ? '没有找到匹配的对话' : '还没有对话记录' }}</p>
@@ -274,22 +275,16 @@ const formatTime = (timeString: string): string => {
 
 const getPersonalityName = (personality: string): string => {
   const names: { [key: string]: string } = {
-    default: '默认',
-    tsundere: '傲娇',
-    tech: '科技',
-    healing: '治愈',
-    defensive: '防御'
+    angel: '天使',
+    demon: '恶魔'
   }
   return names[personality] || personality
 }
 
 const getPersonalityStyle = (personality: string): string => {
   const styles: { [key: string]: string } = {
-    default: 'bg-blue-500/20 text-blue-300',
-    tsundere: 'bg-pink-500/20 text-pink-300',
-    tech: 'bg-cyan-500/20 text-cyan-300',
-    healing: 'bg-green-500/20 text-green-300',
-    defensive: 'bg-orange-500/20 text-orange-300'
+    angel: 'bg-blue-500/20 text-blue-300',
+    demon: 'bg-red-500/20 text-red-300'
   }
   return styles[personality] || 'bg-gray-500/20 text-gray-300'
 }

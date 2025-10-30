@@ -75,7 +75,7 @@ router.post('/register', (req: Request, res: Response): void => {
 /**
  * 用户登录
  * POST /api/auth/login
- */// 用户登录
+ */
 router.post('/login', (req: Request, res: Response): void => {
   try {
     const { username, password } = req.body

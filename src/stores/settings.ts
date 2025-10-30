@@ -31,6 +31,14 @@ interface UserSettings {
   // 高级设置
   debugMode: boolean
   apiTimeout: number
+  
+  // 分组设置（为了兼容性）
+  chat: {
+    typewriterEffect: boolean
+  }
+  voice: {
+    autoPlay: boolean
+  }
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -52,7 +60,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   maxSessionHistory: 100,
   
   // 人格设置
-  preferredPersonality: 'default',
+  preferredPersonality: 'angel',
   allowPersonalitySwitch: true,
   personalityTriggerSensitivity: 'medium',
   
@@ -62,7 +70,15 @@ const DEFAULT_SETTINGS: UserSettings = {
   
   // 高级设置
   debugMode: false,
-  apiTimeout: 30000
+  apiTimeout: 30000,
+  
+  // 分组设置
+  chat: {
+    typewriterEffect: true
+  },
+  voice: {
+    autoPlay: true
+  }
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -139,10 +155,10 @@ export const useSettingsStore = defineStore('settings', () => {
       const importedKeys = Object.keys(imported)
       
       // 只导入有效的设置项
-      const validSettings: Partial<UserSettings> = {}
+      const validSettings: any = {}
       importedKeys.forEach(key => {
         if (validKeys.includes(key)) {
-          validSettings[key as keyof UserSettings] = imported[key]
+          validSettings[key] = imported[key]
         }
       })
       

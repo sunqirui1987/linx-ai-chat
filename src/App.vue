@@ -1,61 +1,94 @@
 <template>
-  <div id="app" class="min-h-screen bg-gray-900 text-white">
-    <!-- 主应用容器 -->
-    <div class="flex h-screen">
+  <div id="app" class="h-screen w-screen overflow-hidden bg-gray-900 text-white">
+    <!-- 登录界面 -->
+    <LoginForm 
+      v-if="!isAuthenticated"
+      @login="handleLogin"
+      @register="handleRegister"
+    />
+    
+    <!-- 主应用界面 -->
+    <div v-else class="h-full w-full flex">
       <!-- 侧边栏 -->
-      <Sidebar 
-        v-if="isAuthenticated"
-        :sessions="chatSessions"
-        :currentSessionId="currentSessionId"
-        @selectSession="selectSession"
-        @newSession="createNewSession"
-        @deleteSession="deleteSession"
-      />
-      
-      <!-- 主内容区 -->
-      <div class="flex-1 flex flex-col">
-        <!-- 顶部导航栏 -->
-        <Header 
-          v-if="isAuthenticated"
-          :currentPersonality="currentPersonality"
-          :memoryCount="unlockedMemoryCount"
-          @toggleMemory="showMemoryPanel = !showMemoryPanel"
-          @toggleSettings="showSettings = !showSettings"
-          @logout="logout"
-        />
-        
-        <!-- 聊天界面 -->
-        <ChatInterface 
-          v-if="isAuthenticated"
-          :messages="currentMessages"
-          :isLoading="isLoading"
-          :currentPersonality="currentPersonality"
-          @sendMessage="sendMessage"
-          @toggleTTS="toggleTTS"
-        />
-        
-        <!-- 登录界面 -->
-        <LoginForm 
-          v-else
-          @login="handleLogin"
-          @register="handleRegister"
+      <div class="w-80 h-full border-r border-gray-700 flex-shrink-0">
+        <Sidebar 
+          :sessions="chatSessions"
+          :currentSessionId="currentSessionId"
+          @selectSession="selectSession"
+          @newSession="createNewSession"
+          @deleteSession="deleteSession"
         />
       </div>
       
-      <!-- 记忆片段面板 -->
-      <MemoryPanel 
-        v-if="isAuthenticated && showMemoryPanel"
-        :memoryFragments="memoryFragments"
-        @close="showMemoryPanel = false"
-      />
+      <!-- 主内容区 -->
+      <div class="flex-1 h-full flex flex-col">
+        <!-- 顶部导航栏 -->
+        <div class="h-16 border-b border-gray-700 flex-shrink-0">
+          <Header 
+            :currentPersonality="currentPersonality"
+            :memoryCount="unlockedMemoryCount"
+            @toggleAffinity="showAffinityPanel = !showAffinityPanel"
+            @toggleMemory="showMemoryPanel = !showMemoryPanel"
+            @toggleMorality="showMoralityPanel = !showMoralityPanel"
+            @toggleSettings="showSettings = !showSettings"
+            @personalityChange="handlePersonalityChange"
+            @logout="logout"
+          />
+        </div>
+        
+        <!-- 聊天区域 -->
+        <div class="flex-1 overflow-hidden relative">
+          <!-- 角色切换动画 -->
+          <PersonalitySwitchAnimation 
+            v-if="showPersonalitySwitchAnimation"
+            :oldPersonality="previousPersonality"
+            :newPersonality="currentPersonality"
+            @animationComplete="showPersonalitySwitchAnimation = false"
+          />
+          
+          <!-- 游戏化聊天界面 -->
+          <GameChatInterface 
+            :messages="currentMessages"
+            :isLoading="isLoading"
+            :currentPersonality="currentPersonality"
+            @sendMessage="sendMessage"
+            @voiceInput="handleVoiceInput"
+          />
+        </div>
+      </div>
       
-      <!-- 设置面板 -->
-      <SettingsPanel 
-        v-if="isAuthenticated && showSettings"
-        :settings="userSettings"
-        @updateSettings="updateSettings"
-        @close="showSettings = false"
-      />
+      <!-- 右侧面板区域 -->
+      <div v-if="showAffinityPanel || showMemoryPanel || showSettings || showMoralityPanel" class="w-96 h-full border-l border-gray-700 flex-shrink-0 overflow-y-auto">
+        <!-- 道德系统面板 -->
+        <MoralSystemPanel 
+          v-if="showMoralityPanel"
+          :corruption="moralityValues.corruption"
+          :purity="moralityValues.purity"
+          :recentChoices="recentMoralChoices"
+          @close="showMoralityPanel = false"
+        />
+        
+        <!-- 记忆收集面板 -->
+        <MemoryCollectionPanel 
+          v-if="showMemoryPanel"
+          :memories="memoryFragments"
+          @close="showMemoryPanel = false"
+        />
+        
+        <!-- 好感度面板 -->
+        <AffinityPanel 
+          v-if="showAffinityPanel"
+          @close="showAffinityPanel = false"
+        />
+        
+        <!-- 设置面板 -->
+        <SettingsPanel 
+          v-if="showSettings"
+          :settings="userSettings"
+          @settingsChanged="handleSettingsChanged"
+          @close="showSettings = false"
+        />
+      </div>
     </div>
     
     <!-- 全局通知 -->
@@ -68,18 +101,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useAuthStore } from './stores/auth'
 import { useChatStore } from './stores/chat'
 import { useMemoryStore } from './stores/memory'
+import { useAffinityStore } from './stores/affinity'
+import { useMemoryFragmentStore } from './stores/memoryFragment'
 import { useSettingsStore } from './stores/settings'
+import { useGameTheme } from './composables/useGameTheme'
+import { useGameAudio } from './composables/useGameAudio'
 
 // 组件导入
 import Sidebar from './components/Sidebar.vue'
 import Header from './components/Header.vue'
-import ChatInterface from './components/ChatInterface.vue'
+import GameChatInterface from './components/GameChatInterface.vue'
+import PersonalitySwitchAnimation from './components/PersonalitySwitchAnimation.vue'
+import MoralSystemPanel from './components/MoralSystemPanel.vue'
+import MemoryCollectionPanel from './components/MemoryCollectionPanel.vue'
 import LoginForm from './components/LoginForm.vue'
 import MemoryPanel from './components/MemoryPanel.vue'
+import MemoryFragmentPanel from './components/MemoryFragmentPanel.vue'
+import AffinityPanel from './components/AffinityPanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import NotificationToast from './components/NotificationToast.vue'
 
@@ -87,17 +129,38 @@ import NotificationToast from './components/NotificationToast.vue'
 const authStore = useAuthStore()
 const chatStore = useChatStore()
 const memoryStore = useMemoryStore()
+const affinityStore = useAffinityStore()
+const memoryFragmentStore = useMemoryFragmentStore()
 const settingsStore = useSettingsStore()
+
+// 游戏化功能
+const { currentPersonality: themePersonality, switchPersonality } = useGameTheme()
+const { playSound, playPersonalityAmbient, toggleAudio, audioConfig } = useGameAudio()
 
 // 响应式数据
 const isLoading = ref(false)
 const showMemoryPanel = ref(false)
+const showAffinityPanel = ref(false)
 const showSettings = ref(false)
+const showMoralityPanel = ref(false)
+const showPersonalitySwitchAnimation = ref(false)
+const previousPersonality = ref<string>('neutral')
 const notification = ref<{
   type: 'success' | 'error' | 'info'
   message: string
-  duration?: number
 } | null>(null)
+
+// 道德值系统
+const moralityValues = reactive({
+  corruption: 30,
+  purity: 70
+})
+
+const recentMoralChoices = ref([
+  { id: '1', choice: '选择了诚实', impact: 5, timestamp: new Date() },
+  { id: '2', choice: '拒绝了诱惑', impact: 3, timestamp: new Date() },
+  { id: '3', choice: '帮助了他人', impact: 8, timestamp: new Date() }
+])
 
 // 计算属性
 const isAuthenticated = computed(() => authStore.isAuthenticated)
@@ -107,17 +170,83 @@ const currentMessages = computed(() => chatStore.currentMessages)
 const currentPersonality = computed(() => chatStore.currentPersonality)
 const memoryFragments = computed(() => memoryStore.fragments)
 const unlockedMemoryCount = computed(() => memoryStore.unlockedCount)
-const userSettings = computed(() => settingsStore.settings)
+
+// 用户设置
+const userSettings = reactive({
+  enableTTS: true,
+  autoSave: true,
+  theme: 'dark'
+})
 
 // 方法
-const selectSession = async (sessionId: string) => {
+const showNotification = (type: 'success' | 'error' | 'info', message: string) => {
+  notification.value = { type, message }
+  setTimeout(() => {
+    notification.value = null
+  }, 3000)
+}
+
+const handleLogin = async (credentials: { username: string; password: string }) => {
   try {
     isLoading.value = true
+    await authStore.login(credentials)
+    await initializeUserData()
+    showNotification('success', '登录成功')
+  } catch (error) {
+    showNotification('error', '登录失败')
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const handleRegister = async (userData: { username: string; password: string; email?: string }) => {
+  try {
+    isLoading.value = true
+    await authStore.register({ username: userData.username, password: userData.password })
+    await initializeUserData()
+    showNotification('success', '注册成功')
+  } catch (error) {
+    showNotification('error', '注册失败')
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const logout = async () => {
+  try {
+    await authStore.logout()
+    chatStore.clearData()
+    memoryStore.clearData()
+    showNotification('info', '已退出登录')
+  } catch (error) {
+    showNotification('error', '退出登录失败')
+  }
+}
+
+const initializeUserData = async () => {
+  try {
+    await Promise.all([
+      chatStore.loadSessions(),
+      memoryStore.loadMemoryFragments(),
+      affinityStore.fetchAffinityData(),
+      memoryFragmentStore.fetchFragments()
+    ])
+    
+    // 如果没有会话，创建一个新会话
+    if (chatStore.sessions.length === 0) {
+      await createNewSession()
+    }
+  } catch (error) {
+    console.error('初始化用户数据失败:', error)
+    showNotification('error', '加载数据失败')
+  }
+}
+
+const selectSession = async (sessionId: string) => {
+  try {
     await chatStore.selectSession(sessionId)
   } catch (error) {
     showNotification('error', '切换会话失败')
-  } finally {
-    isLoading.value = false
   }
 }
 
@@ -145,17 +274,16 @@ const deleteSession = async (sessionId: string) => {
 const sendMessage = async (content: string) => {
   try {
     isLoading.value = true
-    const response = await chatStore.sendMessage(content, userSettings.value.enableTTS)
+    const result = await chatStore.sendMessage(content, userSettings.enableTTS)
     
-    // 检查是否有新的记忆片段解锁
-    if (response.memoryUnlocked && response.memoryUnlocked.length > 0) {
-      await memoryStore.refreshMemoryFragments()
-      showNotification('info', `解锁了新的记忆片段！`, 3000)
-    }
-    
-    // 播放语音（如果启用）
-    if (response.audioUrl && userSettings.value.enableTTS) {
-      playAudio(response.audioUrl)
+    // 处理人格切换通知
+    if (result.personalityChanged && result.currentPersonality && result.personalityChangeReason) {
+      const personalityNames = {
+        'angel': '天使',
+        'demon': '恶魔'
+      }
+      const personalityName = personalityNames[result.currentPersonality] || result.currentPersonality
+      showNotification('info', `🔄 人格已自动切换到${personalityName}模式\n原因: ${result.personalityChangeReason}`)
     }
   } catch (error) {
     showNotification('error', '发送消息失败')
@@ -164,129 +292,130 @@ const sendMessage = async (content: string) => {
   }
 }
 
-const handleLogin = async (credentials: { username: string; password: string }) => {
-  try {
-    isLoading.value = true
-    await authStore.login(credentials)
-    await initializeUserData()
-    showNotification('success', '登录成功！欢迎回来~')
-  } catch (error) {
-    showNotification('error', '登录失败，请检查用户名和密码')
-  } finally {
-    isLoading.value = false
-  }
-}
-
-const handleRegister = async (credentials: { username: string; password: string }) => {
-  try {
-    isLoading.value = true
-    await authStore.register(credentials)
-    await initializeUserData()
-    showNotification('success', '注册成功！七崽正在等你~')
-  } catch (error) {
-    showNotification('error', '注册失败，用户名可能已存在')
-  } finally {
-    isLoading.value = false
-  }
-}
-
-const logout = async () => {
-  try {
-    await authStore.logout()
-    chatStore.clearData()
-    memoryStore.clearData()
-    showNotification('info', '已退出登录')
-  } catch (error) {
-    showNotification('error', '退出登录失败')
-  }
-}
-
 const toggleTTS = () => {
-  settingsStore.updateSettings({
-    enableTTS: !userSettings.value.enableTTS
-  })
-  showNotification('info', `语音播放已${userSettings.value.enableTTS ? '开启' : '关闭'}`)
+  userSettings.enableTTS = !userSettings.enableTTS
+  showNotification('info', `语音播放已${userSettings.enableTTS ? '开启' : '关闭'}`)
 }
 
-const updateSettings = (newSettings: any) => {
+const handlePersonalityChange = (personality: string) => {
+  previousPersonality.value = chatStore.currentPersonality
+  chatStore.currentPersonality = personality
+  
+  // 播放切换音效
+  if (personality === 'demon') {
+    playSound('switchToDemon')
+  } else if (personality === 'angel') {
+    playSound('switchToAngel')
+  }
+  
+  // 显示切换动画
+  showPersonalitySwitchAnimation.value = true
+  
+  // 切换主题
+  switchPersonality(personality as 'demon' | 'angel' | 'neutral')
+  
+  // 播放角色环境音
+  playPersonalityAmbient(personality as 'demon' | 'angel' | 'neutral')
+  
+  const personalityNames = {
+    'demon': '恶魔',
+    'angel': '天使',
+    'neutral': '中性'
+  }
+  showNotification('info', `🔄 已切换到${personalityNames[personality as keyof typeof personalityNames] || personality}人格`)
+}
+
+const handleVoiceInput = (isRecording: boolean) => {
+  if (isRecording) {
+    playSound('buttonClick')
+    showNotification('info', '🎤 开始语音输入')
+  } else {
+    playSound('buttonClick')
+    showNotification('info', '🎤 语音输入结束')
+  }
+}
+
+const handleSettingsChanged = (newSettings: any) => {
+  Object.assign(userSettings, newSettings)
   settingsStore.updateSettings(newSettings)
   showNotification('success', '设置已保存')
 }
 
-const initializeUserData = async () => {
-  try {
-    // 加载聊天会话
-    await chatStore.loadSessions()
+// 监听器
+watch(() => currentPersonality.value, (newPersonality, oldPersonality) => {
+  if (oldPersonality && newPersonality !== oldPersonality) {
+    // 自动触发角色切换动画和音效
+    previousPersonality.value = oldPersonality
+    showPersonalitySwitchAnimation.value = true
     
-    // 加载记忆片段
-    await memoryStore.loadMemoryFragments()
-    
-    // 如果没有会话，创建一个新的
-    if (chatSessions.value.length === 0) {
-      await createNewSession()
+    if (newPersonality === 'demon') {
+      playSound('switchToDemon')
+    } else if (newPersonality === 'angel') {
+      playSound('switchToAngel')
     }
-  } catch (error) {
-    console.error('初始化用户数据失败:', error)
+    
+    switchPersonality(newPersonality as 'demon' | 'angel' | 'neutral')
+    playPersonalityAmbient(newPersonality as 'demon' | 'angel' | 'neutral')
   }
-}
-
-const showNotification = (type: 'success' | 'error' | 'info', message: string, duration = 2000) => {
-  notification.value = { type, message, duration }
-  setTimeout(() => {
-    notification.value = null
-  }, duration)
-}
-
-const playAudio = (audioUrl: string) => {
-  try {
-    const audio = new Audio(audioUrl)
-    audio.volume = userSettings.value.volume / 100
-    audio.play().catch(error => {
-      console.error('音频播放失败:', error)
-    })
-  } catch (error) {
-    console.error('音频播放失败:', error)
-  }
-}
+})
 
 // 生命周期
 onMounted(async () => {
-  // 检查是否已登录
   if (authStore.token) {
     try {
       await authStore.validateToken()
       await initializeUserData()
     } catch (error) {
-      // Token无效，清除登录状态
       authStore.logout()
     }
   }
+  
+  // 初始化音频系统
+  setTimeout(() => {
+    playPersonalityAmbient('neutral')
+  }, 1000)
 })
 </script>
 
 <style>
-/* 全局样式 */
+/* 全局样式重置 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 #app {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 滚动条样式 */
-::-webkit-scrollbar {
+/* 自定义滚动条 - 仅在需要时显示 */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #4b5563 #1f2937;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
 
-::-webkit-scrollbar-track {
+.custom-scrollbar::-webkit-scrollbar-track {
   background: #1f2937;
 }
 
-::-webkit-scrollbar-thumb {
+.custom-scrollbar::-webkit-scrollbar-thumb {
   background: #4b5563;
   border-radius: 3px;
 }
 
-::-webkit-scrollbar-thumb:hover {
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #6b7280;
 }
 
@@ -306,7 +435,10 @@ onMounted(async () => {
   transition: transform 0.3s ease;
 }
 
-.slide-enter-from,
+.slide-enter-from {
+  transform: translateX(100%);
+}
+
 .slide-leave-to {
   transform: translateX(100%);
 }
@@ -321,14 +453,5 @@ onMounted(async () => {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-}
-
-/* 卡片阴影效果 */
-.card-shadow {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-}
-
-.card-shadow-lg {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 </style>

@@ -1,4 +1,4 @@
-import express from 'express'
+import * as express from 'express'
 import { personalityService } from '../services/personalityService'
 
 const router = express.Router()
@@ -56,12 +56,11 @@ router.post('/recommend', async (req, res) => {
       })
     }
 
-    const recommendation = await personalityService.recommendPersonality({
+    const recommendation = await personalityService.recommendPersonality(
       emotion,
       content,
-      sessionId,
-      currentPersonality
-    })
+      sessionId || 'default'
+    )
 
     res.json({
       success: true,
@@ -91,6 +90,7 @@ router.post('/switch', async (req, res) => {
       fromPersonality,
       toPersonality,
       reason,
+      triggerType: 'manual',
       emotion
     })
 

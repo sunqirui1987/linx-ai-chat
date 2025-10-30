@@ -1,4 +1,4 @@
-import express from 'express'
+import * as express from 'express'
 import { memoryService } from '../services/memoryService'
 
 const router = express.Router()
@@ -31,12 +31,8 @@ router.get('/fragments', async (req, res) => {
 router.get('/fragments/:fragmentId', async (req, res) => {
   try {
     const { fragmentId } = req.params
-    const { sessionId } = req.query
 
-    const fragment = await memoryService.getMemoryFragment(
-      fragmentId,
-      sessionId as string
-    )
+    const fragment = await memoryService.getMemoryFragment(fragmentId)
 
     if (!fragment) {
       return res.status(404).json({
@@ -97,15 +93,16 @@ router.post('/unlock', async (req, res) => {
       })
     }
 
-    const unlockResult = await memoryService.unlockMemoryFragment({
-      sessionId,
+    const unlockResult = await memoryService.unlockMemoryFragment(
       fragmentId,
-      trigger
-    })
+      sessionId,
+      'manual',
+      trigger || 'Manual unlock'
+    )
 
-    if (!unlockResult.success) {
+    if (!unlockResult) {
       return res.status(400).json({
-        error: unlockResult.message || 'Failed to unlock memory fragment'
+        error: 'Failed to unlock memory fragment'
       })
     }
 
@@ -127,10 +124,7 @@ router.get('/sessions/:sessionId/unlocked', async (req, res) => {
     const { sessionId } = req.params
     const { limit = 50 } = req.query
 
-    const unlockedMemories = await memoryService.getUnlockedMemories(
-      sessionId,
-      parseInt(limit as string)
-    )
+    const unlockedMemories = await memoryService.getUnlockedMemories(sessionId)
 
     res.json({
       success: true,
@@ -192,10 +186,7 @@ router.get('/fragments/:fragmentId/hint', async (req, res) => {
     const { fragmentId } = req.params
     const { sessionId } = req.query
 
-    const hint = await memoryService.getUnlockHint(
-      fragmentId,
-      sessionId as string
-    )
+    const hint = await memoryService.getUnlockHint(fragmentId)
 
     if (!hint) {
       return res.status(404).json({
@@ -271,7 +262,7 @@ router.post('/cleanup', async (req, res) => {
   try {
     const { daysOld = 90 } = req.body
 
-    const cleanedCount = await memoryService.cleanupOldUnlockRecords(daysOld)
+    const cleanedCount = await memoryService.cleanupOldUnlocks(daysOld)
 
     res.json({
       success: true,
@@ -286,12 +277,12 @@ router.post('/cleanup', async (req, res) => {
   }
 })
 
-// 获取记忆分类统计
+// 获取分类统计
 router.get('/stats/categories', async (req, res) => {
   try {
     const { sessionId } = req.query
 
-    const stats = await memoryService.getCategoryStats(sessionId as string)
+    const stats = await memoryService.getMemoryStats(sessionId as string)
 
     res.json({
       success: true,
@@ -310,7 +301,7 @@ router.get('/stats/rarity', async (req, res) => {
   try {
     const { sessionId } = req.query
 
-    const stats = await memoryService.getRarityStats(sessionId as string)
+    const stats = await memoryService.getMemoryStats(sessionId as string)
 
     res.json({
       success: true,

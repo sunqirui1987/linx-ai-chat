@@ -59,6 +59,8 @@ export interface PersonalitySwitch {
   from_personality: string
   to_personality: string
   reason: string
+  trigger_type: string
+  emotion_context: string | null
   timestamp: string
   created_at: string
 }

@@ -1,5 +1,6 @@
-import express from 'express'
+import * as express from 'express'
 import { emotionService } from '../services/emotionService'
+import { chatService } from '../services/chatService'
 
 const router = express.Router()
 
@@ -14,14 +15,31 @@ router.post('/analyze', async (req, res) => {
       })
     }
 
-    const emotion = emotionService.analyzeEmotion(text.trim())
+    let contextMessages: string[] = []
+    
+    // 如果提供了sessionId，获取最近2-3条消息作为上下文
+    if (sessionId) {
+      try {
+        const recentMessages = await chatService.getSessionMessages(sessionId, 3)
+        // 只取用户和助手的消息内容，排除当前正在分析的消息
+        contextMessages = recentMessages
+          .filter(msg => msg.content.trim() !== text.trim())
+          .slice(-2) // 取最近2条作为上下文
+          .map(msg => `${msg.role === 'user' ? '用户' : 'AI'}: ${msg.content}`)
+      } catch (error) {
+        console.warn('Failed to get context messages:', error)
+        // 如果获取上下文失败，继续进行分析但不使用上下文
+      }
+    }
+
+    const emotion = emotionService.analyzeEmotion(text.trim(), contextMessages)
 
     // 如果提供了sessionId，保存分析结果
     if (sessionId) {
       await emotionService.saveEmotionAnalysis({
         sessionId,
         text: text.trim(),
-        emotion: emotion.emotion,
+        emotion: emotion.type,
         confidence: emotion.confidence,
         context: emotion.context
       })
@@ -65,7 +83,7 @@ router.post('/analyze/batch', async (req, res) => {
           await emotionService.saveEmotionAnalysis({
             sessionId,
             text: text.trim(),
-            emotion: emotion.emotion,
+            emotion: emotion.type,
             confidence: emotion.confidence,
             context: emotion.context
           })
@@ -131,11 +149,14 @@ router.get('/sessions/:sessionId/stats', async (req, res) => {
 router.get('/sessions/:sessionId/trends', async (req, res) => {
   try {
     const { sessionId } = req.params
-    const { timeRange = '24h' } = req.query
+    const { timeRange = '24' } = req.query
+
+    // 将timeRange转换为小时数
+    const hours = parseInt(timeRange as string) || 24
 
     const trends = await emotionService.getEmotionTrends(
       sessionId,
-      timeRange as string
+      hours
     )
 
     res.json({
@@ -153,19 +174,15 @@ router.get('/sessions/:sessionId/trends', async (req, res) => {
 // 检测情绪变化
 router.post('/detect-change', async (req, res) => {
   try {
-    const { sessionId, currentEmotion, threshold = 0.3 } = req.body
+    const { sessionId } = req.body
 
-    if (!sessionId || !currentEmotion) {
+    if (!sessionId) {
       return res.status(400).json({
-        error: 'Session ID and current emotion are required'
+        error: 'Session ID is required'
       })
     }
 
-    const change = await emotionService.detectEmotionChange(
-      sessionId,
-      currentEmotion,
-      threshold
-    )
+    const change = await emotionService.detectEmotionChange(sessionId)
 
     res.json({
       success: true,
@@ -182,9 +199,10 @@ router.post('/detect-change', async (req, res) => {
 // 获取全局情绪统计
 router.get('/stats/global', async (req, res) => {
   try {
-    const { timeRange = '7d' } = req.query
+    const { days = '7' } = req.query
 
-    const stats = await emotionService.getGlobalEmotionStats(timeRange as string)
+    const daysNum = parseInt(days as string) || 7
+    const stats = await emotionService.getEmotionStats(undefined, daysNum)
 
     res.json({
       success: true,
@@ -205,7 +223,7 @@ router.get('/sessions/:sessionId/export', async (req, res) => {
 
     const exportData = await emotionService.exportEmotionData(sessionId)
 
-    if (!exportData || exportData.length === 0) {
+    if (!exportData || exportData.analyses.length === 0) {
       return res.status(404).json({
         error: 'No emotion data found for this session'
       })

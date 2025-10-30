@@ -6,26 +6,77 @@ export interface EmotionResult {
   confidence: number
   keywords: string[]
   context: string
+  personality?: 'demon' | 'angel'
+  personalityColor?: string
+  moralValues?: {
+    corruption: number
+    purity: number
+  }
 }
 
 export interface EmotionAnalysisRequest {
   sessionId: string
-  messageId: string
-  emotion: EmotionResult
+  text: string
+  emotion: string
+  confidence: number
+  context: string
+  personality?: 'demon' | 'angel'
+  moralValues?: {
+    corruption: number
+    purity: number
+  }
 }
 
 export interface EmotionStats {
   totalAnalyses: number
   emotionDistribution: { [key: string]: number }
   averageIntensity: number
+  personalityDistribution: { demon: number; angel: number }
+  moralTrends: {
+    corruption: number[]
+    purity: number[]
+  }
   recentTrends: Array<{
     date: string
     emotions: { [key: string]: number }
+    personality: 'demon' | 'angel'
   }>
 }
 
 class EmotionService {
   private db = database.getDatabase()
+
+  // 恶魔与天使人格关键词字典
+  private personalityKeywords = {
+    demon: [
+      // 欲望相关
+      '想要', '得到', '拥有', '占有', '贪婪', '欲望', '渴望',
+      // 愤怒相关
+      '愤怒', '生气', '讨厌', '恨', '报复', '复仇', '惩罚',
+      // 叛逆相关
+      '反抗', '叛逆', '违背', '打破', '摧毁', '破坏', '颠覆',
+      // 真相相关
+      '真相', '现实', '虚伪', '谎言', '欺骗', '假象', '揭露',
+      // 黑暗相关
+      '黑暗', '阴暗', '邪恶', '罪恶', '堕落', '腐败', '诱惑',
+      // 消极相关
+      '放弃', '算了', '无所谓', '随便', '绝望', '痛苦', '折磨'
+    ],
+    angel: [
+      // 治愈相关
+      '治愈', '安慰', '温暖', '关怀', '呵护', '保护', '拯救',
+      // 希望相关
+      '希望', '光明', '未来', '梦想', '理想', '憧憬', '期待',
+      // 善良相关
+      '善良', '仁慈', '慈悲', '宽容', '包容', '理解', '原谅',
+      // 成长相关
+      '成长', '进步', '学习', '改变', '提升', '完善', '发展',
+      // 道德相关
+      '正义', '公正', '道德', '品德', '美德', '高尚', '纯洁',
+      // 积极相关
+      '坚持', '努力', '奋斗', '勇敢', '坚强', '乐观', '积极'
+    ]
+  }
 
   // 情绪关键词字典
   private emotionKeywords = {
@@ -49,8 +100,16 @@ class EmotionService {
   }
 
   // 分析文本情绪
-  analyzeEmotion(text: string): EmotionResult {
+  analyzeEmotion(text: string, contextMessages: string[] = []): EmotionResult {
     const normalizedText = this.normalizeText(text)
+    
+    // 如果有上下文消息，也进行分析以增强情绪检测
+    let contextText = ''
+    if (contextMessages.length > 0) {
+      contextText = this.normalizeText(contextMessages.join(' '))
+    }
+    
+    const combinedText = contextText ? `${contextText} ${normalizedText}` : normalizedText
     const emotions: { [key: string]: { intensity: number; keywords: string[] } } = {}
 
     // 分析各种情绪
@@ -60,9 +119,15 @@ class EmotionService {
         let intensity = 0
 
         for (const keyword of keywords) {
+          // 在当前文本中查找关键词（权重更高）
           if (normalizedText.includes(keyword)) {
             matchedKeywords.push(keyword)
-            intensity += 0.2 // 每个关键词增加0.2强度
+            intensity += 0.3 // 当前文本中的关键词权重更高
+          }
+          // 在上下文中查找关键词（权重较低）
+          else if (contextText && contextText.includes(keyword)) {
+            matchedKeywords.push(`[上下文]${keyword}`)
+            intensity += 0.1 // 上下文中的关键词权重较低
           }
         }
 
@@ -94,18 +159,74 @@ class EmotionService {
       dominantEmotion = 'neutral'
     }
 
-    // 计算置信度
-    const confidence = this.calculateConfidence(normalizedText, allKeywords, maxIntensity)
+    // 计算置信度（考虑上下文）
+    const confidence = this.calculateConfidence(combinedText, allKeywords, maxIntensity)
 
-    // 生成上下文描述
-    const context = this.generateContext(dominantEmotion, maxIntensity, allKeywords)
+    // 分析人格模式
+    const personalityResult = this.analyzePersonality(combinedText, dominantEmotion)
+
+    // 生成上下文描述（包含上下文信息）
+    const context = this.generateContextWithHistory(dominantEmotion, maxIntensity, allKeywords, contextMessages.length > 0)
 
     return {
       type: dominantEmotion,
       intensity: maxIntensity,
       confidence,
       keywords: allKeywords,
-      context
+      context,
+      personality: personalityResult.personality,
+      personalityColor: personalityResult.color,
+      moralValues: personalityResult.moralValues
+    }
+  }
+
+  // 分析人格模式（恶魔或天使）
+  private analyzePersonality(text: string, emotion: string): {
+    personality: 'demon' | 'angel'
+    color: string
+    moralValues: { corruption: number; purity: number }
+  } {
+    let demonScore = 0
+    let angelScore = 0
+
+    // 检查恶魔关键词
+    for (const keyword of this.personalityKeywords.demon) {
+      if (text.includes(keyword)) {
+        demonScore += 1
+      }
+    }
+
+    // 检查天使关键词
+    for (const keyword of this.personalityKeywords.angel) {
+      if (text.includes(keyword)) {
+        angelScore += 1
+      }
+    }
+
+    // 根据情绪类型调整分数
+    if (['anger', 'disgust'].includes(emotion)) {
+      demonScore += 2
+    } else if (['sadness', 'fear'].includes(emotion)) {
+      angelScore += 2
+    } else if (['joy', 'love'].includes(emotion)) {
+      angelScore += 1
+    }
+
+    // 计算道德值
+    const totalScore = demonScore + angelScore
+    const corruption = totalScore > 0 ? demonScore / totalScore : 0.5
+    const purity = totalScore > 0 ? angelScore / totalScore : 0.5
+
+    // 选择人格
+    const personality: 'demon' | 'angel' = demonScore > angelScore ? 'demon' : 'angel'
+    
+    // 设置颜色
+    const color = personality === 'demon' ? '#ff4444' : '#44aaff'
+
+    return {
+      personality,
+      color,
+      moralValues: { corruption, purity }
     }
   }
 
@@ -153,19 +274,37 @@ class EmotionService {
     return `检测到${intensityLevel}的${emotionName}情绪${keywordText}`
   }
 
+  // 生成包含历史上下文的描述
+  private generateContextWithHistory(emotionType: string, intensity: number, keywords: string[], hasContext: boolean): string {
+    const emotionNames: { [key: string]: string } = {
+      anger: '愤怒', sadness: '悲伤', fear: '恐惧', disgust: '厌恶',
+      joy: '喜悦', love: '爱意', surprise: '惊喜', pride: '自豪',
+      curiosity: '好奇', confusion: '困惑', boredom: '无聊', neutral: '平静'
+    }
+
+    const emotionName = emotionNames[emotionType] || '未知'
+    const intensityLevel = intensity > 0.7 ? '强烈' : intensity > 0.4 ? '中等' : '轻微'
+    const keywordText = keywords.length > 0 ? `，关键词：${keywords.slice(0, 3).join('、')}` : ''
+    const contextText = hasContext ? '（结合对话上下文分析）' : ''
+
+    return `检测到${intensityLevel}的${emotionName}情绪${keywordText}${contextText}`
+  }
+
   // 保存情绪分析结果
   async saveEmotionAnalysis(request: EmotionAnalysisRequest): Promise<void> {
     try {
+      const now = new Date().toISOString()
       const analysis: EmotionAnalysis = {
         id: `emotion_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         session_id: request.sessionId,
-        message_id: request.messageId,
-        emotion_type: request.emotion.type,
-        intensity: request.emotion.intensity,
-        confidence: request.emotion.confidence,
-        keywords: JSON.stringify(request.emotion.keywords),
-        context: request.emotion.context,
-        created_at: new Date().toISOString()
+        message_id: `msg_${Date.now()}`,
+        emotion_type: request.emotion,
+        intensity: request.confidence,
+        confidence: request.confidence,
+        keywords: JSON.stringify([]),
+        context: request.context,
+        timestamp: now,
+        created_at: now
       }
 
       const insertAnalysis = this.db.prepare(`
@@ -270,7 +409,13 @@ class EmotionService {
         count: number
       }>
 
-      const recentTrends: Array<{ date: string; emotions: { [key: string]: number } }> = []
+      // 人格分布（暂时使用默认值，因为数据库还没有personality字段）
+      const personalityDistribution = { demon: 0, angel: 0 }
+
+      // 道德趋势（暂时使用默认值）
+      const moralTrends = { corruption: [], purity: [] }
+
+      const recentTrends: Array<{ date: string; emotions: { [key: string]: number }; personality: 'demon' | 'angel' }> = []
       const trendsByDate: { [key: string]: { [key: string]: number } } = {}
 
       trendsResults.forEach(result => {
@@ -281,13 +426,17 @@ class EmotionService {
       })
 
       Object.entries(trendsByDate).forEach(([date, emotions]) => {
-        recentTrends.push({ date, emotions })
+        // 暂时默认为angel，后续可以根据情绪分布推断
+        const personality: 'demon' | 'angel' = 'angel'
+        recentTrends.push({ date, emotions, personality })
       })
 
       return {
         totalAnalyses: totalResult.count,
         emotionDistribution,
         averageIntensity: intensityResult.avg_intensity || 0,
+        personalityDistribution,
+        moralTrends,
         recentTrends
       }
     } catch (error) {
@@ -296,6 +445,8 @@ class EmotionService {
         totalAnalyses: 0,
         emotionDistribution: {},
         averageIntensity: 0,
+        personalityDistribution: { demon: 0, angel: 0 },
+        moralTrends: { corruption: [], purity: [] },
         recentTrends: []
       }
     }

@@ -201,7 +201,7 @@ export class SocketManager {
       chatStore.lastPersonalitySwitch = new Date(data.timestamp)
       
       // 更新人格管理器
-      personalityManager.setPersonality(data.to)
+      personalityManager.switchPersonality(data.to, data.reason || '服务器切换')
       
       // 触发通知
       this.emit('personality:changed', data)

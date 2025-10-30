@@ -303,11 +303,8 @@
                 @change="updatePersonalitySettings"
                 class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
               >
-                <option value="default">默认痞帅</option>
-                <option value="tsundere">傲娇模式</option>
-                <option value="tech">科技高冷</option>
-                <option value="warm">治愈暖心</option>
-                <option value="defensive">防御模式</option>
+                <option value="angel">天使模式</option>
+                <option value="demon">恶魔模式</option>
               </select>
             </div>
           </div>
@@ -506,6 +503,11 @@ import {
   AlertTriangle
 } from 'lucide-vue-next'
 
+// Props
+const props = defineProps<{
+  settings?: any
+}>()
+
 // Emits
 const emit = defineEmits<{
   close: []
@@ -539,7 +541,7 @@ const settings = reactive({
   personality: {
     autoSwitch: true,
     emotionDetection: true,
-    defaultPersonality: 'default'
+    defaultPersonality: 'angel'
   },
   memory: {
     autoUnlock: true,
@@ -657,7 +659,7 @@ const resetSettings = () => {
     personality: {
       autoSwitch: true,
       emotionDetection: true,
-      defaultPersonality: 'default'
+      defaultPersonality: 'angel'
     },
     memory: {
       autoUnlock: true,
@@ -674,13 +676,29 @@ const resetSettings = () => {
   emit('settingsChanged', { type: 'all', settings })
 }
 
-// 初始化设置（从本地存储加载）
+// 初始化设置
 const initSettings = () => {
   try {
-    const savedSettings = localStorage.getItem('ai-chat-settings')
-    if (savedSettings) {
-      const parsed = JSON.parse(savedSettings)
-      Object.assign(settings, parsed)
+    // 优先使用props中的设置
+    if (props.settings) {
+      // 将全局设置映射到本地设置格式
+      settings.personality.defaultPersonality = props.settings.preferredPersonality || 'angel'
+      settings.personality.autoSwitch = props.settings.allowPersonalitySwitch !== false
+      settings.voice.enabled = props.settings.enableTTS !== false
+      settings.voice.volume = (props.settings.volume || 80) / 100
+      settings.voice.autoPlay = props.settings.autoPlay !== false
+      settings.ui.theme = props.settings.theme || 'dark'
+      settings.ui.fontSize = props.settings.fontSize === 'small' ? 12 : props.settings.fontSize === 'large' ? 18 : 14
+      settings.chat.typewriterEffect = props.settings.enableTypingIndicator !== false
+      settings.chat.autoScroll = props.settings.autoSaveSession !== false
+      settings.advanced.developerMode = props.settings.debugMode === true
+    } else {
+      // 从本地存储加载
+      const savedSettings = localStorage.getItem('ai-chat-settings')
+      if (savedSettings) {
+        const parsed = JSON.parse(savedSettings)
+        Object.assign(settings, parsed)
+      }
     }
   } catch (error) {
     console.error('加载设置失败:', error)

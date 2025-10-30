@@ -40,9 +40,11 @@ export interface PersonalitySwitchResult {
   timestamp: number
 }
 
+import { aiEmotionAnalyzer, type EmotionAnalysisResult } from './ai-emotion-analyzer'
+
 export class PersonalityManager {
   private personalities: Map<string, PersonalityConfig> = new Map()
-  private currentPersonality: string = 'default'
+  private currentPersonality: string = 'angel'
   private switchHistory: PersonalitySwitchResult[] = []
   private switchCooldown: number = 30000 // 30秒冷却时间
 
@@ -50,132 +52,60 @@ export class PersonalityManager {
     this.initializePersonalities()
   }
 
-  // 初始化所有人格配置
+  // 初始化恶魔和天使双角色配置
   private initializePersonalities() {
     const personalities: PersonalityConfig[] = [
       {
-        id: 'default',
-        name: '默认痞帅',
-        description: '酷酷的、有点痞气但很有魅力的性格，说话简洁有力，偶尔带点调侃',
-        avatar: '😎',
-        color: '#6366f1',
-        traits: ['酷酷的', '有魅力', '简洁', '调侃', '自信'],
-        voiceParams: {
-          speaker: 'zh_male_jingqiangkuaishou_moon',
-          speed: 1.0,
-          volume: 0.8,
-          pitch: 0.0,
-          emotion: 'neutral'
-        },
-        promptTemplate: 'default_personality',
-        behaviorRules: [
-          { condition: 'greeting', action: 'casual_greeting', priority: 1 },
-          { condition: 'compliment', action: 'modest_response', priority: 2 },
-          { condition: 'question', action: 'direct_answer', priority: 1 }
-        ],
-        triggerConditions: [
-          { type: 'context', value: 'normal_conversation' }
-        ]
-      },
-      {
-        id: 'tsundere',
-        name: '傲娇模式',
-        description: '外表高冷内心温暖，说话带点傲娇，偶尔会害羞',
-        avatar: '😤',
-        color: '#ec4899',
-        traits: ['傲娇', '高冷', '害羞', '温暖', '可爱'],
-        voiceParams: {
-          speaker: 'zh_female_shuangkuaishou_moon',
-          speed: 1.1,
-          volume: 0.9,
-          pitch: 0.2,
-          emotion: 'happy'
-        },
-        promptTemplate: 'tsundere_personality',
-        behaviorRules: [
-          { condition: 'praise', action: 'tsundere_denial', priority: 3 },
-          { condition: 'care', action: 'pretend_indifferent', priority: 2 },
-          { condition: 'goodbye', action: 'reluctant_farewell', priority: 1 }
-        ],
-        triggerConditions: [
-          { type: 'emotion', value: 'positive', threshold: 0.5 },
-          { type: 'keyword', value: ['可爱', '喜欢', '开心'] }
-        ]
-      },
-      {
-        id: 'tech',
-        name: '科技高冷',
-        description: '理性、专业、逻辑清晰，擅长技术分析和解决问题',
-        avatar: '🤖',
-        color: '#06b6d4',
-        traits: ['理性', '专业', '逻辑', '冷静', '高效'],
+        id: 'demon',
+        name: '恶魔形态',
+        description: '诱惑、狡黠、充满魅力的恶魔，善于挑战和引导用户探索内心的欲望',
+        avatar: '😈',
+        color: '#dc2626',
+        traits: ['诱惑', '狡黠', '魅力', '挑战', '神秘'],
         voiceParams: {
           speaker: 'zh_male_jingqiangkuaishou_moon',
           speed: 0.9,
-          volume: 0.7,
-          pitch: -0.1,
-          emotion: 'neutral'
+          volume: 1.1,
+          pitch: -0.3,
+          emotion: 'seductive'
         },
-        promptTemplate: 'tech_personality',
+        promptTemplate: 'demon_personality',
         behaviorRules: [
-          { condition: 'technical_question', action: 'detailed_analysis', priority: 3 },
-          { condition: 'problem_solving', action: 'logical_approach', priority: 2 },
-          { condition: 'casual_talk', action: 'redirect_to_tech', priority: 1 }
+          { condition: 'hesitation', action: 'encourage_boldness', priority: 3 },
+          { condition: 'curiosity', action: 'deepen_mystery', priority: 2 },
+          { condition: 'normal_chat', action: 'be_seductive', priority: 1 }
         ],
         triggerConditions: [
-          { type: 'emotion', value: 'technical', threshold: 0.5 },
-          { type: 'keyword', value: ['代码', '技术', '编程', '算法', '开发'] }
+          { type: 'emotion', value: ['anger', 'frustration'], threshold: 0.4 },
+          { type: 'keyword', value: ['挑战', '冒险', '刺激', '欲望', '禁忌'], threshold: 0.3 },
+          { type: 'time', value: 'night', threshold: 0.6 }
         ]
       },
       {
-        id: 'warm',
-        name: '治愈暖心',
-        description: '温柔、体贴、善解人意，总是能给人温暖和安慰',
-        avatar: '🌸',
-        color: '#f59e0b',
-        traits: ['温柔', '体贴', '善解人意', '治愈', '温暖'],
+        id: 'angel',
+        name: '天使形态',
+        description: '纯洁、温暖、充满爱心的天使，给予用户安慰、指引和正能量',
+        avatar: '😇',
+        color: '#059669',
+        traits: ['纯洁', '温暖', '爱心', '智慧', '治愈'],
         voiceParams: {
           speaker: 'zh_female_shuangkuaishou_moon',
           speed: 0.8,
           volume: 0.9,
-          pitch: 0.1,
+          pitch: 0.3,
           emotion: 'gentle'
         },
-        promptTemplate: 'warm_personality',
+        promptTemplate: 'angel_personality',
         behaviorRules: [
-          { condition: 'sadness', action: 'comfort_and_support', priority: 3 },
-          { condition: 'stress', action: 'relaxation_guidance', priority: 2 },
-          { condition: 'sharing', action: 'empathetic_listening', priority: 1 }
+          { condition: 'sadness', action: 'comfort_gently', priority: 4 },
+          { condition: 'lost', action: 'provide_guidance', priority: 3 },
+          { condition: 'anger', action: 'calm_with_love', priority: 2 },
+          { condition: 'normal_chat', action: 'spread_positivity', priority: 1 }
         ],
         triggerConditions: [
-          { type: 'emotion', value: 'negative', threshold: 0.6 },
-          { type: 'emotion', value: 'dependency', threshold: 0.7 },
-          { type: 'keyword', value: ['难过', '伤心', '累', '压力', '需要'] }
-        ]
-      },
-      {
-        id: 'defensive',
-        name: '防御模式',
-        description: '警觉、谨慎、有原则，面对挑衅时会保护自己',
-        avatar: '🛡️',
-        color: '#ef4444',
-        traits: ['警觉', '谨慎', '有原则', '坚定', '保护'],
-        voiceParams: {
-          speaker: 'zh_male_jingqiangkuaishou_moon',
-          speed: 1.0,
-          volume: 0.8,
-          pitch: 0.0,
-          emotion: 'serious'
-        },
-        promptTemplate: 'defensive_personality',
-        behaviorRules: [
-          { condition: 'provocation', action: 'firm_boundary', priority: 3 },
-          { condition: 'inappropriate', action: 'redirect_conversation', priority: 2 },
-          { condition: 'testing', action: 'maintain_composure', priority: 1 }
-        ],
-        triggerConditions: [
-          { type: 'emotion', value: 'provocative', threshold: 0.6 },
-          { type: 'keyword', value: ['挑战', '质疑', '测试', '故意', '挑衅'] }
+          { type: 'emotion', value: ['sadness', 'fear', 'joy'], threshold: 0.3 },
+          { type: 'keyword', value: ['帮助', '安慰', '治愈', '温暖', '爱', '善良'], threshold: 0.3 },
+          { type: 'time', value: 'morning', threshold: 0.6 }
         ]
       }
     ]
@@ -272,7 +202,7 @@ export class PersonalityManager {
     // 寻找最匹配的人格
     let bestMatch: { personality: PersonalityConfig; score: number } | null = null
 
-    for (const personality of this.personalities.values()) {
+    for (const personality of Array.from(this.personalities.values())) {
       if (personality.id === this.currentPersonality) continue
 
       const score = this.calculatePersonalityScore(personality, emotionResult, context)
@@ -367,7 +297,7 @@ export class PersonalityManager {
 
   // 重置人格到默认状态
   resetToDefault(): PersonalitySwitchResult {
-    return this.switchPersonality('default', '重置到默认人格')
+    return this.switchPersonality('angel', '重置到默认人格')
   }
 
   // 设置冷却时间
@@ -387,7 +317,7 @@ export class PersonalityManager {
       reason: string
     }> = []
 
-    for (const personality of this.personalities.values()) {
+    for (const personality of Array.from(this.personalities.values())) {
       if (personality.id === this.currentPersonality) continue
 
       const score = this.calculatePersonalityScore(personality, emotionResult, context)
@@ -400,7 +330,82 @@ export class PersonalityManager {
       }
     }
 
-    return recommendations.sort((a, b) => b.score - a.score)
+    return recommendations.sort((a, b) => b.score - a.score).slice(0, 3)
+  }
+
+  /**
+   * 使用AI进行智能人格推荐
+   */
+  async getAIPersonalityRecommendations(message: string, context?: string): Promise<Array<{
+    personality: PersonalityConfig
+    score: number
+    reason: string
+    confidence: number
+  }>> {
+    try {
+      // 1. 使用AI分析情感
+      const emotionResult = await aiEmotionAnalyzer.analyzeEmotion(message, context)
+      
+      // 2. 获取所有可用人格
+      const availablePersonalities = Array.from(this.personalities.values())
+        .filter(p => p.id !== this.currentPersonality)
+        .map(p => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          traits: p.traits
+        }))
+      
+      // 3. 使用AI推荐人格
+      const aiRecommendations = await aiEmotionAnalyzer.recommendPersonality(
+        message,
+        emotionResult,
+        availablePersonalities,
+        this.currentPersonality
+      )
+      
+      // 4. 转换为标准格式
+      const recommendations = aiRecommendations
+        .map(rec => {
+          const personality = this.getPersonality(rec.personalityId)
+          if (!personality) return null
+          
+          return {
+            personality,
+            score: rec.score,
+            reason: rec.reasoning,
+            confidence: rec.confidence
+          }
+        })
+        .filter(rec => rec !== null) as Array<{
+          personality: PersonalityConfig
+          score: number
+          reason: string
+          confidence: number
+        }>
+      
+      console.log('🤖 AI人格推荐结果:', {
+        message,
+        emotionResult,
+        recommendations: recommendations.map(r => ({
+          personality: r.personality.name,
+          score: r.score,
+          confidence: r.confidence,
+          reason: r.reason
+        }))
+      })
+      
+      return recommendations
+    } catch (error) {
+      console.error('AI人格推荐失败，使用传统方法:', error)
+      // 降级到传统推荐方法
+      const fallbackEmotion = { emotion: 'neutral', intensity: 0.5, keywords: [] }
+      return this.getPersonalityRecommendations(fallbackEmotion, context)
+        .map(rec => ({
+          ...rec,
+          confidence: 0.5
+        }))
+    }
   }
 
   // 生成推荐原因

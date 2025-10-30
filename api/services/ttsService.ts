@@ -1,6 +1,6 @@
-import crypto from 'crypto'
-import fs from 'fs'
-import path from 'path'
+import * as crypto from 'crypto'
+import * as fs from 'fs'
+import * as path from 'path'
 
 export interface TTSConfig {
   apiKey: string
@@ -149,7 +149,7 @@ class TTSService {
         return this.generateMockAudio(request.text)
       }
 
-      // 构建请求参数，按照火山引擎TTS文档格式
+      // 构建请求参数，按照火山引擎TTS文档格式（匹配Python实现）
       const params = {
         app: {
           appid: this.config.appId,
@@ -157,35 +157,31 @@ class TTSService {
           cluster: 'volcano_tts'
         },
         user: {
-          uid: 'user_' + Date.now()
+          uid: '1'  // 使用固定uid，匹配Python实现
         },
         audio: {
           voice_type: request.voiceParams.voiceId,
           encoding: request.format || this.config.audioFormat,
-          rate: request.sampleRate || this.config.sampleRate,
           speed_ratio: request.voiceParams.speed,
           volume_ratio: request.voiceParams.volume,
-          pitch_ratio: request.voiceParams.pitch,
-          emotion: request.voiceParams.emotion,
-          language: 'cn'
+          pitch_ratio: request.voiceParams.pitch
         },
         request: {
           reqid: crypto.randomUUID(),
           text: request.text,
           text_type: 'plain',
           operation: 'query',
-          silence_duration: 125,
           with_frontend: 1,
           frontend_type: 'unitTson'
         }
       }
+      console.log('TTS API request:', params)
 
-      // 发送请求，使用Bearer Token认证
+      // 发送请求，使用标准headers（匹配Python实现）
       const response = await fetch(this.config.baseUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer;${this.config.apiKey}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(params)
       })

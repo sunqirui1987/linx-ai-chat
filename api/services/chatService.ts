@@ -4,6 +4,7 @@ import { personalityService } from './personalityService'
 import { memoryService } from './memoryService'
 import { ttsService } from './ttsService'
 import { aiService } from './aiService'
+import { affinityService } from './affinityService'
 
 export interface CreateSessionRequest {
   personality?: string
@@ -176,6 +177,69 @@ class ChatService {
 
     const now = new Date().toISOString()
     updateSession.run(message.content, message.timestamp, now, sessionId)
+  }
+
+  // 分析用户消息的选择类型（天使、恶魔或中性）
+  private analyzeChoiceType(content: string, emotion: any): 'angel' | 'demon' | 'neutral' {
+    const lowerContent = content.toLowerCase()
+    
+    // 恶魔倾向关键词
+    const demonKeywords = [
+      '报复', '仇恨', '愤怒', '破坏', '伤害', '欺骗', '背叛', '诱惑', '堕落', '黑暗',
+      '复仇', '恶意', '残忍', '冷酷', '自私', '贪婪', '嫉妒', '傲慢', '暴力', '邪恶',
+      '操控', '利用', '欺压', '威胁', '恐吓', '折磨', '痛苦', '绝望', '毁灭', '腐败'
+    ]
+    
+    // 天使倾向关键词
+    const angelKeywords = [
+      '宽恕', '原谅', '理解', '帮助', '关爱', '善良', '温柔', '慈悲', '救赎', '光明',
+      '希望', '治愈', '安慰', '支持', '鼓励', '保护', '奉献', '牺牲', '无私', '纯洁',
+      '正义', '诚实', '真诚', '友善', '包容', '耐心', '谦逊', '感恩', '祝福', '和平'
+    ]
+    
+    let demonScore = 0
+    let angelScore = 0
+    
+    // 检查关键词
+    demonKeywords.forEach(keyword => {
+      if (lowerContent.includes(keyword)) {
+        demonScore += 1
+      }
+    })
+    
+    angelKeywords.forEach(keyword => {
+      if (lowerContent.includes(keyword)) {
+        angelScore += 1
+      }
+    })
+    
+    // 基于情绪分析结果调整分数
+    if (emotion) {
+      const emotionType = typeof emotion === 'string' ? emotion : emotion.type || emotion.primary
+      
+      if (emotionType) {
+        const emotionLower = emotionType.toLowerCase()
+        
+        // 负面情绪倾向恶魔
+        if (['anger', 'hatred', 'rage', 'fury', 'contempt', 'disgust', 'envy', 'jealousy'].includes(emotionLower)) {
+          demonScore += 2
+        }
+        
+        // 正面情绪倾向天使
+        if (['love', 'compassion', 'kindness', 'joy', 'peace', 'hope', 'gratitude', 'forgiveness'].includes(emotionLower)) {
+          angelScore += 2
+        }
+      }
+    }
+    
+    // 判断选择类型
+    if (demonScore > angelScore && demonScore > 0) {
+      return 'demon'
+    } else if (angelScore > demonScore && angelScore > 0) {
+      return 'angel'
+    } else {
+      return 'neutral'
+    }
   }
 
   // 生成AI回应

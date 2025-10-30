@@ -22,6 +22,8 @@ import memoryRoutes from './routes/memory'
 import emotionRoutes from './routes/emotion'
 import ttsRoutes from './routes/tts'
 import aiRoutes from './routes/ai'
+import affinityRoutes from './routes/affinity'
+import memoryFragmentsRoutes from './routes/memory-fragments'
 
 const app = express()
 const server = createServer(app)
@@ -84,6 +86,8 @@ app.use('/api/memory', memoryRoutes)
 app.use('/api/emotion', emotionRoutes)
 app.use('/api/tts', ttsRoutes)
 app.use('/api/ai', aiRoutes)
+app.use('/api/affinity', affinityRoutes)
+app.use('/api/memory-fragments', memoryFragmentsRoutes)
 
 // Socket.IO连接处理
 const socketManager = initializeSocketManager(io)

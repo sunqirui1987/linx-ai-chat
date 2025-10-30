@@ -1,4 +1,4 @@
-import express from 'express'
+import * as express from 'express'
 import { ttsService } from '../services/ttsService'
 
 const router = express.Router()
@@ -14,19 +14,7 @@ router.post('/generate', async (req, res) => {
       })
     }
 
-    const result = await ttsService.generateSpeech({
-      text: text.trim(),
-      personality,
-      voice,
-      speed,
-      pitch
-    })
-
-    if (!result.success) {
-      return res.status(500).json({
-        error: result.error || 'Failed to generate speech'
-      })
-    }
+    const result = await ttsService.generateSpeech(text.trim(), personality)
 
     res.json({
       success: true,

@@ -1,6 +1,7 @@
 import express from 'express'
 import { chatService } from '../services/chatService'
 import { emotionService } from '../services/emotionService'
+import { personalityService } from '../services/personalityService'
 
 const router = express.Router()
 
@@ -115,11 +116,21 @@ router.post('/sessions/:sessionId/messages', async (req, res) => {
     // 分析用户情绪
     const emotion = emotionService.analyzeEmotion(content)
 
+    // 检查是否需要切换人格
+    const personalityCheck = await personalityService.checkPersonalitySwitch(
+      content.trim(),
+      emotion,
+      personality
+    )
+
+    // 如果需要切换人格，使用新的人格
+    const finalPersonality = personalityCheck.shouldSwitch ? personalityCheck.newPersonality : personality
+
     // 生成AI回应
     const response = await chatService.generateResponse({
       content: content.trim(),
       sessionId,
-      personality,
+      personality: finalPersonality,
       emotion,
       enableTTS
     })
@@ -136,7 +147,9 @@ router.post('/sessions/:sessionId/messages', async (req, res) => {
         aiResponse: aiMessage,
         audioUrl: response.audioUrl,
         memoryUnlocked: response.memoryUnlocked,
-        personalityChanged: personality !== response.personality,
+        personalityChanged: personalityCheck.shouldSwitch,
+        currentPersonality: finalPersonality,
+        personalityChangeReason: personalityCheck.shouldSwitch ? personalityCheck.reason : undefined,
         suggestions: response.suggestions
       }
     })

@@ -2,10 +2,17 @@
   "users": [
     {
       "id": 1,
+      "username": "testuser",
+      "password": "e4d2f949a401c04e9cd0bd410e31d6f81b413974151fc458c18d2d186c379219",
+      "created_at": "2025-10-30T07:22:17.189Z",
+      "updated_at": "2025-10-30T07:22:17.189Z"
+    },
+    {
+      "id": 1,
       "username": "sqr",
       "password": "e4d2f949a401c04e9cd0bd410e31d6f81b413974151fc458c18d2d186c379219",
-      "created_at": "2025-10-29T23:52:58.108Z",
-      "updated_at": "2025-10-29T23:52:58.108Z"
+      "created_at": "2025-10-30T07:35:39.733Z",
+      "updated_at": "2025-10-30T07:35:39.733Z"
     }
   ],
   "chat_sessions": [],

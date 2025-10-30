@@ -265,11 +265,8 @@ const getProgress = (notification: Notification): number => {
 
 const getPersonalityName = (personality: string): string => {
   const names: { [key: string]: string } = {
-    default: '默认痞帅',
-    tsundere: '傲娇模式',
-    tech: '科技高冷',
-    warm: '治愈暖心',
-    defensive: '防御模式'
+    angel: '天使模式',
+    demon: '恶魔模式'
   }
   return names[personality] || personality
 }

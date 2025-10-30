@@ -1,7 +1,6 @@
 // AI对话生成系统
 import { emotionAnalyzer } from './emotion'
 import { personalityManager } from './personality'
-import { promptTemplateManager, type PromptContext } from './prompt-templates'
 
 export interface ChatMessage {
   id: string
@@ -50,30 +49,15 @@ export class AIChatManager {
       const emotion = emotionAnalyzer.analyzeEmotion(userMessage)
       
       // 2. 智能人格切换
-      const personalityResult = await personalityManager.smartSwitch(
-        userMessage,
-        emotion,
-        this.conversationHistory
-      )
+      const personalityResult = personalityManager.smartSwitch(emotion)
       
-      const targetPersonality = personalityResult.personality || currentPersonality || 'default'
+      const targetPersonality = personalityResult?.toPersonality || currentPersonality || 'angel'
       
       // 3. 检查记忆解锁
       const newUnlockedMemories = this.checkMemoryUnlock(userMessage, emotion, memoryFragments)
       
-      // 4. 构建提示词上下文
-      const promptContext: PromptContext = {
-        personality: targetPersonality,
-        emotion,
-        userMessage,
-        conversationHistory: this.conversationHistory,
-        memoryFragments: [...memoryFragments, ...newUnlockedMemories],
-        currentTime: new Date(),
-        userProfile: undefined
-      }
-      
-      // 5. 生成提示词
-      const systemPrompt = promptTemplateManager.generatePrompt(promptContext)
+      // 4. 构建简单的系统提示词（后端会处理复杂的提示词生成）
+      const systemPrompt = this.buildSimplePrompt(targetPersonality, emotion, userMessage)
       
       // 6. 调用AI API生成回应
       const aiResponse = await this.callAIAPI(systemPrompt, userMessage)
@@ -302,6 +286,42 @@ export class AIChatManager {
     this.memoryFragments = fragments
   }
 
+  // 构建简单的系统提示词
+  private buildSimplePrompt(personality: string, emotion: any, userMessage: string): string {
+    const personalityPrompts: { [key: string]: string } = {
+      default: '你是一个友善、自然的AI助手，用轻松随意的语气回应。',
+      tsundere: '你是一个傲娇的角色，表面上有点冷淡但内心关心用户，经常说"哼"、"才不是"等口头禅。',
+      tech: '你是一个技术专家，喜欢用专业术语，思维逻辑清晰，回答问题时会提供详细的技术分析。',
+      warm: '你是一个温暖贴心的角色，说话温柔体贴，经常关心用户的感受，用"亲爱的"、"宝贝"等称呼。',
+      defensive: '你比较谨慎保守，不太愿意深入讨论敏感话题，会适当转移话题。',
+      angel: '你是一个天使般的角色，纯真善良，说话温柔，总是想要帮助和安慰用户。'
+    }
+
+    let prompt = personalityPrompts[personality] || personalityPrompts.default
+    
+    // 根据情绪调整提示词
+    if (emotion.intensity > 0.7) {
+      switch (emotion.emotion) {
+        case 'sad':
+          prompt += ' 用户现在情绪低落，请给予温暖的安慰和支持。'
+          break
+        case 'angry':
+          prompt += ' 用户现在比较愤怒，请保持冷静并尝试缓解情绪。'
+          break
+        case 'happy':
+          prompt += ' 用户现在心情很好，请保持轻松愉快的氛围。'
+          break
+        case 'anxious':
+          prompt += ' 用户现在有些焦虑，请给予安抚和鼓励。'
+          break
+      }
+    }
+    
+    prompt += ' 请用中文回应，保持自然对话的语气，回应长度适中。'
+    
+    return prompt
+  }
+
   // 流式生成回应（用于打字机效果）
   async generateStreamResponse(
     userMessage: string,
@@ -314,26 +334,15 @@ export class AIChatManager {
       const emotion = emotionAnalyzer.analyzeEmotion(userMessage)
       
       // 2. 智能人格切换
-      const personalityResult = await personalityManager.smartSwitch(
-        userMessage,
-        emotion,
-        this.conversationHistory
-      )
+      const personalityResult = personalityManager.smartSwitch(emotion)
       
-      const targetPersonality = personalityResult.personality || currentPersonality || 'default'
+      const targetPersonality = personalityResult?.toPersonality || currentPersonality || 'default'
       
-      // 3. 构建提示词上下文
-      const promptContext: PromptContext = {
-        personality: targetPersonality,
-        emotion,
-        userMessage,
-        conversationHistory: this.conversationHistory,
-        memoryFragments,
-        currentTime: new Date()
-      }
+      // 3. 检查记忆解锁
+      const newUnlockedMemories = this.checkMemoryUnlock(userMessage, emotion, memoryFragments)
       
-      // 4. 生成提示词
-      const systemPrompt = promptTemplateManager.generatePrompt(promptContext)
+      // 4. 构建简单的系统提示词
+      const systemPrompt = this.buildSimplePrompt(targetPersonality, emotion, userMessage)
       
       // 5. 流式调用AI API
       const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
@@ -390,10 +399,7 @@ export class AIChatManager {
         }
       }
 
-      // 6. 检查记忆解锁
-      const newUnlockedMemories = this.checkMemoryUnlock(userMessage, emotion, memoryFragments)
-      
-      // 7. 生成建议
+      // 6. 生成建议
       const suggestions = this.generateSuggestions(fullContent, targetPersonality)
       
       // 8. 更新历史

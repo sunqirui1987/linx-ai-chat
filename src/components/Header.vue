@@ -1,38 +1,52 @@
 <template>
   <header class="bg-gray-800 border-b border-gray-700 px-6 py-4">
     <div class="flex items-center justify-between">
-      <!-- 左侧：当前人格和状态 -->
+      <!-- 左侧：当前人格状态 -->
       <div class="flex items-center space-x-4">
-        <!-- 人格指示器 -->
         <div class="flex items-center space-x-3">
+          <!-- 人格头像 -->
           <div class="relative">
             <div
               class="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300"
-              :class="getPersonalityAvatarStyle(currentPersonality)"
+              :class="personalityStyle"
             >
-              <component :is="getPersonalityIcon(currentPersonality)" class="h-5 w-5" />
+              <component :is="personalityIcon" class="h-5 w-5" />
             </div>
-            <!-- 在线状态指示器 -->
+            <!-- 在线状态 -->
             <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-800 animate-pulse" />
           </div>
           
+          <!-- 人格信息 -->
           <div>
-            <h2 class="text-white font-medium text-lg">
-              {{ getPersonalityName(currentPersonality) }}
-            </h2>
-            <p class="text-gray-400 text-sm">
-              {{ getPersonalityDescription(currentPersonality) }}
-            </p>
+            <div class="flex items-center space-x-2">
+              <h2 class="text-white font-medium text-lg">{{ personalityName }}</h2>
+              <!-- 星级评分 -->
+              <div class="flex items-center space-x-1">
+                <span v-for="i in 5" :key="i" class="text-sm">
+                  <span 
+                    v-if="i <= favorabilityLevel" 
+                    class="text-yellow-400"
+                  >★</span>
+                  <span 
+                    v-else 
+                    class="text-gray-500"
+                  >☆</span>
+                </span>
+              </div>
+            </div>
+            <p class="text-gray-400 text-sm">{{ personalityDescription }}</p>
           </div>
         </div>
 
         <!-- 人格切换按钮 -->
-        <button
-          @click="showPersonalitySelector = !showPersonalitySelector"
-          class="p-2 hover:bg-gray-700 rounded-lg transition-colors group relative"
-          title="切换人格模式"
-        >
-          <Shuffle class="h-5 w-5 text-gray-400 group-hover:text-white transition-colors" />
+        <div class="relative">
+          <button
+            @click="togglePersonalitySelector"
+            class="p-2 hover:bg-gray-700 rounded-lg transition-colors group"
+            title="切换人格模式"
+          >
+            <Shuffle class="h-5 w-5 text-gray-400 group-hover:text-white transition-colors" />
+          </button>
           
           <!-- 人格选择器 -->
           <div
@@ -49,7 +63,7 @@
             >
               <div
                 class="w-6 h-6 rounded-full flex items-center justify-center"
-                :class="getPersonalityAvatarStyle(personality.key)"
+                :class="getPersonalityStyle(personality.key)"
               >
                 <component :is="getPersonalityIcon(personality.key)" class="h-3 w-3" />
               </div>
@@ -59,11 +73,20 @@
               </div>
             </div>
           </div>
-        </button>
+        </div>
       </div>
 
       <!-- 右侧：功能按钮 -->
       <div class="flex items-center space-x-2">
+        <!-- 好感度按钮 -->
+        <button
+          @click="$emit('toggleAffinity')"
+          class="p-2 hover:bg-gray-700 rounded-lg transition-colors group"
+          title="好感度系统"
+        >
+          <Heart class="h-5 w-5 text-gray-400 group-hover:text-pink-400 transition-colors" />
+        </button>
+
         <!-- 记忆片段按钮 -->
         <button
           @click="$emit('toggleMemory')"
@@ -71,23 +94,12 @@
           title="记忆片段"
         >
           <Brain class="h-5 w-5 text-gray-400 group-hover:text-purple-400 transition-colors" />
-          <!-- 记忆数量徽章 -->
           <span
             v-if="memoryCount > 0"
             class="absolute -top-1 -right-1 bg-purple-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium"
           >
             {{ memoryCount > 99 ? '99+' : memoryCount }}
           </span>
-        </button>
-
-        <!-- 语音开关 -->
-        <button
-          @click="toggleTTS"
-          class="p-2 hover:bg-gray-700 rounded-lg transition-colors group"
-          :title="ttsEnabled ? '关闭语音' : '开启语音'"
-        >
-          <Volume2 v-if="ttsEnabled" class="h-5 w-5 text-green-400 group-hover:text-green-300 transition-colors" />
-          <VolumeX v-else class="h-5 w-5 text-gray-400 group-hover:text-white transition-colors" />
         </button>
 
         <!-- 设置按钮 -->
@@ -102,7 +114,7 @@
         <!-- 用户菜单 -->
         <div class="relative">
           <button
-            @click="showUserMenu = !showUserMenu"
+            @click="toggleUserMenu"
             class="flex items-center space-x-2 p-2 hover:bg-gray-700 rounded-lg transition-colors"
           >
             <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
@@ -152,19 +164,15 @@
       </div>
     </div>
 
-    <!-- 人格切换提示 -->
+    <!-- 人格切换通知 -->
     <div
       v-if="personalityChangeNotification"
       class="mt-3 p-3 bg-blue-900/50 border border-blue-700 rounded-lg flex items-center space-x-3 animate-fade-in"
     >
       <Sparkles class="h-5 w-5 text-blue-400" />
       <div class="flex-1">
-        <div class="text-blue-300 text-sm font-medium">
-          人格模式已切换
-        </div>
-        <div class="text-blue-400 text-xs">
-          {{ personalityChangeNotification.message }}
-        </div>
+        <div class="text-blue-300 text-sm font-medium">人格模式已切换</div>
+        <div class="text-blue-400 text-xs">{{ personalityChangeNotification.message }}</div>
       </div>
       <button
         @click="personalityChangeNotification = null"
@@ -179,23 +187,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
-  Brain,
-  Volume2,
-  VolumeX,
-  Settings,
-  User,
-  UserCircle,
-  Download,
-  LogOut,
-  ChevronDown,
-  Shuffle,
-  Sparkles,
-  X,
-  Heart,
-  Zap,
-  Shield,
-  Cpu
+  Brain, Settings, User, UserCircle, Download, LogOut, ChevronDown,
+  Shuffle, Sparkles, X, Heart, Zap, Shield
 } from 'lucide-vue-next'
+import { useAffinityStore } from '@/stores/affinity'
 
 // Props
 const props = defineProps<{
@@ -205,104 +200,101 @@ const props = defineProps<{
 
 // Emits
 const emit = defineEmits<{
+  toggleAffinity: []
   toggleMemory: []
   toggleSettings: []
   logout: []
   personalityChange: [personality: string]
 }>()
 
+// Store
+const affinityStore = useAffinityStore()
+
 // 响应式数据
 const showPersonalitySelector = ref(false)
 const showUserMenu = ref(false)
-const ttsEnabled = ref(true)
 const personalityChangeNotification = ref<{
   message: string
   type: string
 } | null>(null)
 
-// 人格选项
+// 人格配置
 const personalityOptions = [
   {
-    key: 'default',
-    name: '默认痞帅',
-    description: '冷静理性，略带痞气',
-    icon: 'User'
+    key: 'angel',
+    name: '天使七崽',
+    description: '纯洁善良，温暖治愈',
+    icon: Heart,
+    style: 'bg-blue-500/20 text-blue-400 border-2 border-blue-500/30'
   },
   {
-    key: 'tsundere',
-    name: '傲娇模式',
-    description: '外冷内热，口是心非',
-    icon: 'Heart'
-  },
-  {
-    key: 'tech',
-    name: '科技高冷',
-    description: '理性分析，科技范儿',
-    icon: 'Cpu'
-  },
-  {
-    key: 'healing',
-    name: '治愈暖心',
-    description: '温暖治愈，贴心陪伴',
-    icon: 'Heart'
-  },
-  {
-    key: 'defensive',
-    name: '防御模式',
-    description: '保护自我，谨慎应对',
-    icon: 'Shield'
+    key: 'demon',
+    name: '恶魔七崽',
+    description: '诱惑邪恶，充满魅力',
+    icon: Zap,
+    style: 'bg-red-500/20 text-red-400 border-2 border-red-500/30'
   }
 ]
 
 // 计算属性
-const currentPersonalityOption = computed(() =>
+const currentPersonalityConfig = computed(() =>
   personalityOptions.find(p => p.key === props.currentPersonality) || personalityOptions[0]
 )
 
+const personalityName = computed(() => currentPersonalityConfig.value.name)
+const personalityDescription = computed(() => currentPersonalityConfig.value.description)
+const personalityIcon = computed(() => currentPersonalityConfig.value.icon)
+const personalityStyle = computed(() => currentPersonalityConfig.value.style)
+
+// 计算星级评分（基于好感度数据）
+const favorabilityLevel = computed(() => {
+  if (!affinityStore.affinityData) return 0
+  
+  // 根据当前人格类型计算好感度
+  const currentAffinity = props.currentPersonality === 'angel' 
+    ? affinityStore.affinityData.angel_affinity 
+    : affinityStore.affinityData.demon_affinity
+  
+  // 将好感度（0-100）转换为星级（1-5）
+  if (currentAffinity >= 90) return 5
+  if (currentAffinity >= 70) return 4
+  if (currentAffinity >= 50) return 3
+  if (currentAffinity >= 30) return 2
+  if (currentAffinity >= 10) return 1
+  return 0
+})
+
 // 方法
-const getPersonalityName = (personality: string): string => {
-  const option = personalityOptions.find(p => p.key === personality)
-  return option?.name || '默认痞帅'
-}
-
-const getPersonalityDescription = (personality: string): string => {
-  const option = personalityOptions.find(p => p.key === personality)
-  return option?.description || '冷静理性，略带痞气'
-}
-
 const getPersonalityIcon = (personality: string) => {
-  const iconMap: { [key: string]: any } = {
-    default: User,
-    tsundere: Heart,
-    tech: Cpu,
-    healing: Heart,
-    defensive: Shield
-  }
-  return iconMap[personality] || User
+  const config = personalityOptions.find(p => p.key === personality)
+  return config?.icon || Shield
 }
 
-const getPersonalityAvatarStyle = (personality: string): string => {
-  const styleMap: { [key: string]: string } = {
-    default: 'bg-blue-500/20 text-blue-400 border-2 border-blue-500/30',
-    tsundere: 'bg-pink-500/20 text-pink-400 border-2 border-pink-500/30',
-    tech: 'bg-cyan-500/20 text-cyan-400 border-2 border-cyan-500/30',
-    healing: 'bg-green-500/20 text-green-400 border-2 border-green-500/30',
-    defensive: 'bg-orange-500/20 text-orange-400 border-2 border-orange-500/30'
-  }
-  return styleMap[personality] || styleMap.default
+const getPersonalityStyle = (personality: string): string => {
+  const config = personalityOptions.find(p => p.key === personality)
+  return config?.style || 'bg-gray-500/20 text-gray-400 border-2 border-gray-500/30'
+}
+
+const togglePersonalitySelector = () => {
+  showPersonalitySelector.value = !showPersonalitySelector.value
+  showUserMenu.value = false
+}
+
+const toggleUserMenu = () => {
+  showUserMenu.value = !showUserMenu.value
+  showPersonalitySelector.value = false
 }
 
 const selectPersonality = (personality: string) => {
   if (personality !== props.currentPersonality) {
     emit('personalityChange', personality)
     
-    // 显示切换通知
+    const config = personalityOptions.find(p => p.key === personality)
     personalityChangeNotification.value = {
-      message: `已切换到${getPersonalityName(personality)}模式`,
+      message: `已切换到${config?.name || '未知'}模式`,
       type: 'success'
     }
     
-    // 3秒后自动隐藏通知
     setTimeout(() => {
       personalityChangeNotification.value = null
     }, 3000)
@@ -311,35 +303,33 @@ const selectPersonality = (personality: string) => {
   showPersonalitySelector.value = false
 }
 
-const toggleTTS = () => {
-  ttsEnabled.value = !ttsEnabled.value
-  // 这里可以触发全局TTS设置更新
-}
-
 const handleProfile = () => {
   showUserMenu.value = false
-  // 处理个人资料逻辑
   console.log('打开个人资料')
 }
 
 const handleExport = () => {
   showUserMenu.value = false
-  // 处理数据导出逻辑
   console.log('导出数据')
 }
 
 // 点击外部关闭下拉菜单
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as Element
-  
   if (!target.closest('.relative')) {
     showPersonalitySelector.value = false
     showUserMenu.value = false
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
+  // 获取好感度数据
+  try {
+    await affinityStore.fetchAffinityData()
+  } catch (error) {
+    console.error('获取好感度数据失败:', error)
+  }
 })
 
 onUnmounted(() => {
@@ -348,7 +338,10 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* 动画效果 */
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -360,11 +353,6 @@ onUnmounted(() => {
   }
 }
 
-.animate-fade-in {
-  animation: fade-in 0.3s ease-out;
-}
-
-/* 下拉菜单动画 */
 .absolute {
   animation: slideDown 0.2s ease-out;
 }
@@ -380,46 +368,10 @@ onUnmounted(() => {
   }
 }
 
-/* 人格指示器脉冲效果 */
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-/* 悬停效果 */
 button:hover {
   transform: translateY(-1px);
 }
 
-/* 徽章动画 */
-.absolute.-top-1.-right-1 {
-  animation: bounce 1s infinite;
-}
-
-@keyframes bounce {
-  0%, 20%, 53%, 80%, 100% {
-    transform: translate3d(0, 0, 0);
-  }
-  40%, 43% {
-    transform: translate3d(0, -5px, 0);
-  }
-  70% {
-    transform: translate3d(0, -3px, 0);
-  }
-  90% {
-    transform: translate3d(0, -1px, 0);
-  }
-}
-
-/* 人格切换按钮特效 */
 .group:hover .h-5.w-5 {
   transform: rotate(180deg);
   transition: transform 0.3s ease;
