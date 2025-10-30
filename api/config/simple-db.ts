@@ -2,15 +2,14 @@
  * 简单的JSON文件数据库替代方案
  * 用于开发阶段，避免SQLite编译问题
  */
-import fs from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import * as fs from 'fs'
+import * as path from 'path'
 import type { User, ChatSession, ChatMessage, MemoryFragment, UserEmotion } from '../types/models.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+// Use process.cwd() and relative path for ES module compatibility
+const projectRoot = process.cwd()
 
-const dataDir = path.join(__dirname, '../../data')
+const dataDir = path.join(projectRoot, 'data')
 const dbFile = path.join(dataDir, 'simple-db.json')
 
 interface SimpleDB {

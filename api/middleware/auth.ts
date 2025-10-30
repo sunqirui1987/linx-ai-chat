@@ -2,6 +2,7 @@
  * JWT认证中间件
  */
 import jwt from 'jsonwebtoken'
+// @ts-ignore - jsonwebtoken doesn't have proper ES module exports
 import type { Request, Response, NextFunction } from 'express'
 import type { JwtPayload } from '../types/models.js'
 
@@ -30,17 +31,16 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     })
   }
 
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({
-        success: false,
-        error: '访问令牌无效'
-      })
-    }
-
-    req.user = decoded as JwtPayload
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload
+    req.user = decoded
     next()
-  })
+  } catch (error) {
+    return res.status(403).json({
+      success: false,
+      error: '访问令牌无效'
+    })
+  }
 }
 
 /**

@@ -1,6 +1,5 @@
 // AI对话生成系统
-import { emotionAnalyzer } from './emotion'
-import { personalityManager } from './personality'
+import { apiClient } from './api'
 
 export interface ChatMessage {
   id: string
@@ -38,34 +37,26 @@ export class AIChatManager {
     this.config = config
   }
 
-  // 生成AI回应
+  // 生成AI回应 - 简化版本，所有处理都在后端
   async generateResponse(
     userMessage: string,
     currentPersonality?: string,
     memoryFragments: any[] = []
   ): Promise<ChatResponse> {
     try {
-      // 1. 分析用户情绪
-      const emotion = emotionAnalyzer.analyzeEmotion(userMessage)
+      // 直接调用后端API，后端会处理情绪分析、人格切换等
+      const response = await apiClient.post('/chat/message', {
+        message: userMessage,
+        personality: currentPersonality,
+        memoryFragments
+      })
+
+      const { content, personality, emotion, memoryUnlocked, audioUrl } = response.data
       
-      // 2. 智能人格切换
-      const personalityResult = personalityManager.smartSwitch(emotion)
+      // 生成快速回复建议
+      const suggestions = this.generateSuggestions(content, personality)
       
-      const targetPersonality = personalityResult?.toPersonality || currentPersonality || 'angel'
-      
-      // 3. 检查记忆解锁
-      const newUnlockedMemories = this.checkMemoryUnlock(userMessage, emotion, memoryFragments)
-      
-      // 4. 构建简单的系统提示词（后端会处理复杂的提示词生成）
-      const systemPrompt = this.buildSimplePrompt(targetPersonality, emotion, userMessage)
-      
-      // 6. 调用AI API生成回应
-      const aiResponse = await this.callAIAPI(systemPrompt, userMessage)
-      
-      // 7. 生成快速回复建议
-      const suggestions = this.generateSuggestions(aiResponse, targetPersonality)
-      
-      // 8. 更新对话历史
+      // 更新对话历史
       this.addToHistory({
         id: Date.now().toString(),
         content: userMessage,
@@ -76,22 +67,23 @@ export class AIChatManager {
       
       this.addToHistory({
         id: (Date.now() + 1).toString(),
-        content: aiResponse,
+        content,
         role: 'assistant',
         timestamp: new Date(),
-        personality: targetPersonality,
-        memoryTriggered: newUnlockedMemories.map(m => m.id)
+        personality,
+        memoryTriggered: memoryUnlocked?.map((m: any) => m.id) || []
       })
       
       return {
-        content: aiResponse,
-        personality: targetPersonality,
+        content,
+        personality,
         emotion,
-        memoryUnlocked: newUnlockedMemories,
+        memoryUnlocked,
+        audioUrl,
         suggestions
       }
     } catch (error) {
-      console.error('Failed to generate AI response:', error)
+      console.error('AI回应生成失败:', error)
       return this.getFallbackResponse(userMessage, currentPersonality)
     }
   }
@@ -322,7 +314,7 @@ export class AIChatManager {
     return prompt
   }
 
-  // 流式生成回应（用于打字机效果）
+  // 流式生成回应 - 简化版本
   async generateStreamResponse(
     userMessage: string,
     currentPersonality?: string,
@@ -330,48 +322,25 @@ export class AIChatManager {
     onChunk?: (chunk: string) => void
   ): Promise<ChatResponse> {
     try {
-      // 1. 分析用户情绪
-      const emotion = emotionAnalyzer.analyzeEmotion(userMessage)
-      
-      // 2. 智能人格切换
-      const personalityResult = personalityManager.smartSwitch(emotion)
-      
-      const targetPersonality = personalityResult?.toPersonality || currentPersonality || 'default'
-      
-      // 3. 检查记忆解锁
-      const newUnlockedMemories = this.checkMemoryUnlock(userMessage, emotion, memoryFragments)
-      
-      // 4. 构建简单的系统提示词
-      const systemPrompt = this.buildSimplePrompt(targetPersonality, emotion, userMessage)
-      
-      // 5. 流式调用AI API
-      const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.config.apiKey}`
-        },
-        body: JSON.stringify({
-          model: this.config.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage }
-          ],
-          temperature: this.config.temperature,
-          max_tokens: this.config.maxTokens,
-          stream: true
-        })
+      // 直接调用后端流式API
+      const response = await apiClient.post('/chat/stream', {
+        message: userMessage,
+        personality: currentPersonality,
+        memoryFragments
+      }, {
+        responseType: 'stream'
       })
 
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`)
-      }
+      let content = ''
+      let personality = currentPersonality || 'angel'
+      let emotion: any = null
+      let memoryUnlocked: any[] = []
 
-      let fullContent = ''
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
+      // 处理流式响应
+      if (response.data) {
+        const reader = response.data.getReader()
+        const decoder = new TextDecoder()
 
-      if (reader) {
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
@@ -381,16 +350,15 @@ export class AIChatManager {
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
-              const data = line.slice(6)
-              if (data === '[DONE]') break
-
               try {
-                const parsed = JSON.parse(data)
-                const content = parsed.choices[0]?.delta?.content || ''
-                if (content) {
-                  fullContent += content
-                  onChunk?.(content)
+                const data = JSON.parse(line.slice(6))
+                if (data.content) {
+                  content += data.content
+                  onChunk?.(data.content)
                 }
+                if (data.personality) personality = data.personality
+                if (data.emotion) emotion = data.emotion
+                if (data.memoryUnlocked) memoryUnlocked = data.memoryUnlocked
               } catch (e) {
                 // 忽略解析错误
               }
@@ -399,10 +367,10 @@ export class AIChatManager {
         }
       }
 
-      // 6. 生成建议
-      const suggestions = this.generateSuggestions(fullContent, targetPersonality)
-      
-      // 8. 更新历史
+      // 生成建议
+      const suggestions = this.generateSuggestions(content, personality)
+
+      // 更新历史
       this.addToHistory({
         id: Date.now().toString(),
         content: userMessage,
@@ -410,25 +378,25 @@ export class AIChatManager {
         timestamp: new Date(),
         emotion
       })
-      
+
       this.addToHistory({
         id: (Date.now() + 1).toString(),
-        content: fullContent,
+        content,
         role: 'assistant',
         timestamp: new Date(),
-        personality: targetPersonality,
-        memoryTriggered: newUnlockedMemories.map(m => m.id)
+        personality,
+        memoryTriggered: memoryUnlocked.map(m => m.id)
       })
 
       return {
-        content: fullContent,
-        personality: targetPersonality,
+        content,
+        personality,
         emotion,
-        memoryUnlocked: newUnlockedMemories,
+        memoryUnlocked,
         suggestions
       }
     } catch (error) {
-      console.error('Failed to generate stream response:', error)
+      console.error('流式AI回应生成失败:', error)
       return this.getFallbackResponse(userMessage, currentPersonality)
     }
   }

@@ -1,86 +1,75 @@
-import express from 'express'
+/**
+ * 聊天相关路由
+ * 使用新的架构模式：统一响应格式、错误处理、输入验证
+ */
+import * as express from 'express'
 import { chatService } from '../services/chatService'
 import { emotionService } from '../services/emotionService'
 import { personalityService } from '../services/personalityService'
+import { ResponseUtil, createError } from '../utils/response'
+import { validateBody, validateQuery, validateParams } from '../utils/validation'
+import { asyncHandler } from '../middleware'
 
 const router = express.Router()
 
 // 创建新会话
-router.post('/sessions', async (req, res) => {
-  try {
-    const { personality, title, socketId } = req.body
-
-    if (!socketId) {
-      return res.status(400).json({
-        error: 'Socket ID is required'
-      })
-    }
+router.post('/sessions',
+  validateBody([
+    { field: 'personality', required: false, type: 'string' },
+    { field: 'title', required: false, type: 'string', maxLength: 100 }
+  ]),
+  asyncHandler(async (req, res) => {
+    const { personality, title } = req.body
 
     const session = await chatService.createSession({
       personality: personality || 'default',
-      title: title || '新对话',
-      socketId
+      title: title || '新对话'
     })
 
-    res.json({
-      success: true,
-      data: session
-    })
-  } catch (error) {
-    console.error('Error creating session:', error)
-    res.status(500).json({
-      error: 'Failed to create session'
-    })
-  }
-})
+    ResponseUtil.success(res, session, 201)
+  })
+)
 
 // 获取会话列表
-router.get('/sessions', async (req, res) => {
-  try {
-    const { socketId } = req.query
+router.get('/sessions',
+  validateQuery([
+    { field: 'page', required: false, type: 'number', min: 1 },
+    { field: 'limit', required: false, type: 'number', min: 1, max: 100 }
+  ]),
+  asyncHandler(async (req, res) => {
+    const sessions = await chatService.getSessions()
 
-    const sessions = await chatService.getSessions(socketId as string)
-
-    res.json({
-      success: true,
-      data: sessions
-    })
-  } catch (error) {
-    console.error('Error getting sessions:', error)
-    res.status(500).json({
-      error: 'Failed to get sessions'
-    })
-  }
-})
+    ResponseUtil.success(res, sessions)
+  })
+)
 
 // 获取会话详情
-router.get('/sessions/:sessionId', async (req, res) => {
-  try {
+router.get('/sessions/:sessionId',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId } = req.params
 
     const session = await chatService.getSession(sessionId)
 
     if (!session) {
-      return res.status(404).json({
-        error: 'Session not found'
-      })
+      throw createError.sessionNotFound(sessionId)
     }
 
-    res.json({
-      success: true,
-      data: session
-    })
-  } catch (error) {
-    console.error('Error getting session:', error)
-    res.status(500).json({
-      error: 'Failed to get session'
-    })
-  }
-})
+    ResponseUtil.success(res, session)
+  })
+)
 
 // 获取会话消息
-router.get('/sessions/:sessionId/messages', async (req, res) => {
-  try {
+router.get('/sessions/:sessionId/messages',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  validateQuery([
+    { field: 'limit', required: false, type: 'number', min: 1, max: 1000 }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId } = req.params
     const { limit = 100 } = req.query
 
@@ -89,44 +78,51 @@ router.get('/sessions/:sessionId/messages', async (req, res) => {
       parseInt(limit as string)
     )
 
-    res.json({
-      success: true,
-      data: messages
-    })
-  } catch (error) {
-    console.error('Error getting messages:', error)
-    res.status(500).json({
-      error: 'Failed to get messages'
-    })
-  }
-})
+    ResponseUtil.success(res, messages)
+  })
+)
 
 // 发送消息并生成回应
-router.post('/sessions/:sessionId/messages', async (req, res) => {
-  try {
+router.post('/sessions/:sessionId/messages',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  validateBody([
+    { field: 'content', required: true, type: 'string', minLength: 1 },
+    { field: 'personality', required: false, type: 'string' },
+    { field: 'enableTTS', required: false, type: 'boolean' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId } = req.params
     const { content, personality = 'default', enableTTS = false } = req.body
 
+    console.log(`[ChatRoute] 收到消息请求 - sessionId: ${sessionId}, personality: ${personality}`)
+    console.log(`[ChatRoute] 消息内容: "${content}"`)
+
     if (!content || !content.trim()) {
-      return res.status(400).json({
-        error: 'Message content is required'
-      })
+      throw createError.messageEmpty()
     }
 
     // 分析用户情绪
+    console.log(`[ChatRoute] 开始分析用户情绪...`)
     const emotion = emotionService.analyzeEmotion(content)
+    console.log(`[ChatRoute] 情绪分析结果:`, emotion)
 
     // 检查是否需要切换人格
+    console.log(`[ChatRoute] 检查是否需要切换人格...`)
     const personalityCheck = await personalityService.checkPersonalitySwitch(
       content.trim(),
       emotion,
       personality
     )
+    console.log(`[ChatRoute] 人格切换检查结果:`, personalityCheck)
 
     // 如果需要切换人格，使用新的人格
     const finalPersonality = personalityCheck.shouldSwitch ? personalityCheck.newPersonality : personality
+    console.log(`[ChatRoute] 最终使用的人格: ${finalPersonality}`)
 
     // 生成AI回应
+    console.log(`[ChatRoute] 开始生成AI回应...`)
     const response = await chatService.generateResponse({
       content: content.trim(),
       sessionId,
@@ -140,120 +136,85 @@ router.post('/sessions/:sessionId/messages', async (req, res) => {
     const userMessage = messages.find(m => m.role === 'user')
     const aiMessage = messages.find(m => m.role === 'assistant')
 
-    res.json({
-      success: true,
-      data: {
-        message: userMessage,
-        aiResponse: aiMessage,
-        audioUrl: response.audioUrl,
-        memoryUnlocked: response.memoryUnlocked,
-        personalityChanged: personalityCheck.shouldSwitch,
-        currentPersonality: finalPersonality,
-        personalityChangeReason: personalityCheck.shouldSwitch ? personalityCheck.reason : undefined,
-        suggestions: response.suggestions
-      }
+    ResponseUtil.success(res, {
+      message: userMessage,
+      aiResponse: aiMessage,
+      audioUrl: response.audioUrl,
+      memoryUnlocked: response.memoryUnlocked,
+      personalityChanged: personalityCheck.shouldSwitch,
+      currentPersonality: finalPersonality,
+      personalityChangeReason: personalityCheck.shouldSwitch ? personalityCheck.reason : undefined,
+      suggestions: response.suggestions
     })
-  } catch (error) {
-    console.error('Error generating response:', error)
-    res.status(500).json({
-      error: 'Failed to generate response'
-    })
-  }
-})
+  })
+)
 
 // 更新会话标题
-router.put('/sessions/:sessionId/title', async (req, res) => {
-  try {
+router.put('/sessions/:sessionId/title',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  validateBody([
+    { field: 'title', required: true, type: 'string', minLength: 1, maxLength: 100 }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId } = req.params
     const { title } = req.body
 
-    if (!title || !title.trim()) {
-      return res.status(400).json({
-        error: 'Title is required'
-      })
-    }
+    await chatService.updateSessionTitle(sessionId, title.trim())
 
-    const success = await chatService.updateSessionTitle(sessionId, title.trim())
-
-    if (!success) {
-      return res.status(404).json({
-        error: 'Session not found'
-      })
-    }
-
-    res.json({
-      success: true,
-      message: 'Session title updated'
-    })
-  } catch (error) {
-    console.error('Error updating session title:', error)
-    res.status(500).json({
-      error: 'Failed to update session title'
-    })
-  }
-})
+    ResponseUtil.success(res, null, 200)
+  })
+)
 
 // 删除会话
-router.delete('/sessions/:sessionId', async (req, res) => {
-  try {
+router.delete('/sessions/:sessionId',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId } = req.params
 
     const success = await chatService.deleteSession(sessionId)
 
     if (!success) {
-      return res.status(404).json({
-        error: 'Session not found'
-      })
+      throw createError.sessionNotFound(sessionId)
     }
 
-    res.json({
-      success: true,
-      message: 'Session deleted'
-    })
-  } catch (error) {
-    console.error('Error deleting session:', error)
-    res.status(500).json({
-      error: 'Failed to delete session'
-    })
-  }
-})
+    ResponseUtil.success(res, null, 200)
+  })
+)
 
 // 获取会话统计
-router.get('/sessions/:sessionId/stats', async (req, res) => {
-  try {
+router.get('/sessions/:sessionId/stats',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId } = req.params
 
     const stats = await chatService.getSessionStats(sessionId)
 
     if (!stats) {
-      return res.status(404).json({
-        error: 'Session not found'
-      })
+      throw createError.sessionNotFound(sessionId)
     }
 
-    res.json({
-      success: true,
-      data: stats
-    })
-  } catch (error) {
-    console.error('Error getting session stats:', error)
-    res.status(500).json({
-      error: 'Failed to get session stats'
-    })
-  }
-})
+    ResponseUtil.success(res, stats)
+  })
+)
 
 // 导出会话数据
-router.get('/sessions/:sessionId/export', async (req, res) => {
-  try {
+router.get('/sessions/:sessionId/export',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId } = req.params
 
     const exportData = await chatService.exportSessionData(sessionId)
 
     if (!exportData) {
-      return res.status(404).json({
-        error: 'Session not found'
-      })
+      throw createError.sessionNotFound(sessionId)
     }
 
     // 设置下载头
@@ -261,32 +222,24 @@ router.get('/sessions/:sessionId/export', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="session_${sessionId}_${Date.now()}.json"`)
 
     res.json(exportData)
-  } catch (error) {
-    console.error('Error exporting session:', error)
-    res.status(500).json({
-      error: 'Failed to export session'
-    })
-  }
-})
+  })
+)
 
 // 清理旧会话
-router.post('/cleanup', async (req, res) => {
-  try {
+router.post('/cleanup',
+  validateBody([
+    { field: 'daysOld', required: false, type: 'number', min: 1, max: 365 }
+  ]),
+  asyncHandler(async (req, res) => {
     const { daysOld = 30 } = req.body
 
     const cleanedCount = await chatService.cleanupOldSessions(daysOld)
 
-    res.json({
-      success: true,
-      message: `Cleaned up ${cleanedCount} old sessions`,
-      data: { cleanedCount }
+    ResponseUtil.success(res, {
+      cleanedCount,
+      message: `Cleaned up ${cleanedCount} old sessions`
     })
-  } catch (error) {
-    console.error('Error cleaning up sessions:', error)
-    res.status(500).json({
-      error: 'Failed to cleanup sessions'
-    })
-  }
-})
+  })
+)
 
 export default router

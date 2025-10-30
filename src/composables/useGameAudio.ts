@@ -305,33 +305,8 @@ export function useGameAudio() {
 
   // 播放角色特定的环境音
   const playPersonalityAmbient = (personality: 'demon' | 'angel' | 'neutral') => {
-    const context = initAudioContext()
-    if (!context || !audioConfig.enabled || !audioConfig.backgroundMusicEnabled) return
 
-    stopBackgroundMusic()
-
-    switch (personality) {
-      case 'demon':
-        // 恶魔：低沉、不和谐的音效
-        generateAmbientSound()
-        setTimeout(() => {
-          playComplexSound([100, 150, 200], 2, 'sawtooth')
-        }, 1000)
-        break
-      
-      case 'angel':
-        // 天使：高频、和谐的音效
-        generateAmbientSound()
-        setTimeout(() => {
-          playComplexSound([400, 600, 800], 2, 'sine')
-        }, 1000)
-        break
-      
-      default:
-        // 中性：平衡的环境音
-        generateAmbientSound()
-        break
-    }
+   
   }
 
   // 播放打字音效序列

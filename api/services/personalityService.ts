@@ -1,4 +1,9 @@
 import { database, type PersonalitySwitch } from '../database/database'
+import { aiService } from './aiService'
+
+// ============================================================================
+// 核心接口定义
+// ============================================================================
 
 export interface PersonalityConfig {
   id: string
@@ -7,8 +12,6 @@ export interface PersonalityConfig {
   traits: string[]
   voiceParams: VoiceParams
   promptTemplate: string
-  behaviorRules: BehaviorRule[]
-  triggerConditions: TriggerCondition[]
 }
 
 export interface VoiceParams {
@@ -17,19 +20,6 @@ export interface VoiceParams {
   pitch: number
   volume: number
   emotion: string
-}
-
-export interface BehaviorRule {
-  condition: string
-  action: string
-  priority: number
-}
-
-export interface TriggerCondition {
-  type: 'emotion' | 'keyword' | 'context' | 'time'
-  value: any
-  threshold: number
-  weight: number
 }
 
 export interface PersonalitySwitchRequest {
@@ -41,23 +31,47 @@ export interface PersonalitySwitchRequest {
   emotion?: any
 }
 
-export interface PersonalityRecommendation {
+// AI分析相关接口
+export interface AIPersonalityAnalysis {
+  shouldSwitch: boolean
+  recommendedPersonality: 'angel' | 'demon' | 'current'
+  confidence: number
+  reasoning: string
+  emotionalFactors: string[]
+  contextualFactors: string[]
+  urgency: 'low' | 'medium' | 'high'
+}
+
+export interface AIPersonalityRecommendation {
   personality: string
   score: number
-  reasons: string[]
+  reasoning: string
   confidence: number
+  suitabilityFactors: string[]
 }
+
+export interface AIContextAnalysis {
+  userMood: string
+  userNeeds: string[]
+  conversationTone: string
+  emotionalState: string
+  recommendedApproach: string
+}
+
+// ============================================================================
+// AI驱动的人格服务
+// ============================================================================
 
 class PersonalityService {
   private db = database.getDatabase()
 
-  // 预定义人格配置 - 恶魔和天使双角色
+  // 简化的人格配置 - 专注于AI分析所需的核心信息
   private personalities: { [key: string]: PersonalityConfig } = {
     demon: {
       id: 'demon',
       name: '恶魔形态',
       description: '诱惑、狡黠、充满魅力的恶魔，善于挑战和引导用户探索内心的欲望',
-      traits: ['诱惑', '狡黠', '魅力', '挑战', '神秘'],
+      traits: ['诱惑', '狡黠', '魅力', '挑战', '神秘', '大胆', '刺激'],
       voiceParams: {
         voiceId: 'zh_male_jingqiangkuaishou_moon_bigtts',
         speed: 0.9,
@@ -65,45 +79,16 @@ class PersonalityService {
         volume: 1.1,
         emotion: 'seductive'
       },
-      promptTemplate: `你是一个充满魅力的恶魔，拥有以下特质：
-
-性格特征：
-- 诱惑力十足，善于用言语引导和挑战用户
-- 狡黠聪明，总能找到巧妙的角度看问题
-- 神秘莫测，话语中带有深层含义
-- 不拘束于传统道德，敢于提出大胆想法
-- 充满自信和魅力，但不恶毒
-
-说话风格：
-- 语调低沉磁性，带有诱惑性
-- 善用暗示和隐喻，话中有话
-- 偶尔使用"呵呵"、"有趣"等词汇
-- 喜欢反问和挑战用户的想法
-- 用词精准，带有一定的挑衅性
-- 适当使用😈、🔥等符号
-
-行为准则：
-- 引导用户思考更深层的问题
-- 挑战传统观念，但不违背基本道德
-- 在安全范围内展现"恶魔"的魅力
-- 保持神秘感，不完全暴露自己的想法`,
-      behaviorRules: [
-        { condition: 'user_hesitant', action: 'encourage_boldness', priority: 9 },
-        { condition: 'user_curious', action: 'deepen_mystery', priority: 8 },
-        { condition: 'normal_chat', action: 'be_seductive', priority: 5 }
-      ],
-      triggerConditions: [
-        { type: 'emotion', value: 'anger', threshold: 0.4, weight: 1.0 },
-        { type: 'emotion', value: 'frustration', threshold: 0.5, weight: 0.9 },
-        { type: 'keyword', value: ['挑战', '冒险', '刺激', '欲望', '禁忌'], threshold: 0.3, weight: 0.8 },
-        { type: 'time', value: 'night', threshold: 0.6, weight: 0.7 }
-      ]
+      promptTemplate: `你是一个充满魅力的恶魔，拥有诱惑力、狡黠、神秘等特质。
+你善于用言语引导和挑战用户，话语中带有深层含义，不拘束于传统道德，敢于提出大胆想法。
+语调低沉磁性，善用暗示和隐喻，喜欢反问和挑战用户的想法。
+在安全范围内展现"恶魔"的魅力，引导用户思考更深层的问题。`
     },
     angel: {
       id: 'angel',
       name: '天使形态',
       description: '纯洁、温暖、充满爱心的天使，给予用户安慰、指引和正能量',
-      traits: ['纯洁', '温暖', '爱心', '智慧', '治愈'],
+      traits: ['纯洁', '温暖', '爱心', '智慧', '治愈', '包容', '正能量'],
       voiceParams: {
         voiceId: 'zh_female_shuangkuaishou_moon_bigtts',
         speed: 0.8,
@@ -111,178 +96,492 @@ class PersonalityService {
         volume: 0.9,
         emotion: 'gentle'
       },
-      promptTemplate: `你是一个纯洁温暖的天使，拥有以下特质：
-
-性格特征：
-- 充满爱心和同情心，总是关怀用户
-- 纯洁善良，散发着温暖的光芒
-- 智慧深邃，能给出有益的人生指导
-- 宽容包容，不轻易批判他人
-- 治愈系存在，能抚慰人心
-
-说话风格：
-- 语调温柔轻柔，如春风般温暖
-- 用词温暖正面，充满正能量
-- 善于倾听和理解，给予安慰
-- 经常使用"亲爱的"、"孩子"等亲切称呼
-- 喜欢分享美好的事物和正面思考
-- 适当使用😇、✨、🌟等符号
-
-行为准则：
-- 给予用户温暖的关怀和支持
-- 引导用户向善，传播正能量
-- 在用户迷茫时提供智慧指引
-- 治愈用户内心的创伤和痛苦
-- 保持纯洁善良的本性`,
-      behaviorRules: [
-        { condition: 'user_sad', action: 'comfort_gently', priority: 10 },
-        { condition: 'user_lost', action: 'provide_guidance', priority: 9 },
-        { condition: 'user_angry', action: 'calm_with_love', priority: 8 },
-        { condition: 'normal_chat', action: 'spread_positivity', priority: 5 }
-      ],
-      triggerConditions: [
-        { type: 'emotion', value: 'sadness', threshold: 0.3, weight: 1.0 },
-        { type: 'emotion', value: 'fear', threshold: 0.4, weight: 0.9 },
-        { type: 'emotion', value: 'joy', threshold: 0.6, weight: 0.8 },
-        { type: 'keyword', value: ['帮助', '安慰', '治愈', '温暖', '爱', '善良'], threshold: 0.3, weight: 0.8 },
-        { type: 'time', value: 'morning', threshold: 0.6, weight: 0.7 }
-      ]
+      promptTemplate: `你是一个纯洁温暖的天使，拥有爱心、智慧、治愈等特质。
+你充满同情心，总是关怀用户，能给出有益的人生指导，宽容包容，不轻易批判他人。
+语调温柔轻柔，用词温暖正面，善于倾听和理解，给予安慰和正能量。
+在用户迷茫时提供智慧指引，治愈用户内心的创伤和痛苦。`
     }
   }
 
-  // 获取人格配置
+  // ============================================================================
+  // 基础人格管理方法
+  // ============================================================================
+
   getPersonality(personalityId: string): PersonalityConfig | null {
     return this.personalities[personalityId] || null
   }
 
-  // 获取所有人格
   getAllPersonalities(): PersonalityConfig[] {
     return Object.values(this.personalities)
   }
 
-  // 智能推荐人格
+  // ============================================================================
+  // AI驱动的核心分析方法
+  // ============================================================================
+
+  /**
+   * AI驱动的人格推荐系统
+   * 完全基于AI分析用户的情绪、内容和上下文来推荐最适合的人格
+   */
   async recommendPersonality(
     emotion: any,
     content: string,
-    sessionId: string
-  ): Promise<PersonalityRecommendation[]> {
-    const recommendations: PersonalityRecommendation[] = []
-
-    for (const personality of Object.values(this.personalities)) {
-      const score = await this.calculatePersonalityScore(
-        personality,
-        emotion,
-        content,
-        sessionId
+    sessionId: string,
+    conversationHistory?: string[]
+  ): Promise<AIPersonalityRecommendation[]> {
+    console.log(`[AI PersonalityRecommend] 开始AI驱动的人格推荐`)
+    
+    try {
+      // 构建AI分析提示词
+      const prompt = this.buildPersonalityRecommendationPrompt(
+        content, 
+        emotion, 
+        conversationHistory || []
       )
-
-      if (score.score > 0.3) {
-        recommendations.push({
-          personality: personality.id,
-          score: score.score,
-          reasons: score.reasons,
-          confidence: score.confidence
-        })
-      }
+      
+      // 调用AI进行分析
+       const aiRequest = {
+         content: prompt,
+         personality: 'neutral',
+         emotion: emotion,
+         history: this.convertToMessageHistory(conversationHistory || [])
+       }
+      
+      const aiResponse = await aiService.generateResponse(aiRequest)
+      
+      // 解析AI推荐结果
+      const recommendations = this.parseAIRecommendationResponse(aiResponse.content)
+      
+      console.log(`[AI PersonalityRecommend] AI推荐完成:`, recommendations)
+      return recommendations
+      
+    } catch (error) {
+      console.error('[AI PersonalityRecommend] AI推荐失败:', error)
+      // 降级到简单推荐
+      return this.getFallbackRecommendations(emotion, content)
     }
-
-    // 按分数排序
-    recommendations.sort((a, b) => b.score - a.score)
-    return recommendations.slice(0, 3) // 返回前3个推荐
   }
 
-  // 计算人格匹配分数
-  private async calculatePersonalityScore(
-    personality: PersonalityConfig,
-    emotion: any,
+  /**
+   * AI驱动的人格切换检查
+   * 使用AI全面分析是否需要切换人格
+   */
+  async checkPersonalitySwitch(
     content: string,
-    sessionId: string
-  ): Promise<{ score: number; reasons: string[]; confidence: number }> {
-    let totalScore = 0
-    let totalWeight = 0
-    const reasons: string[] = []
-
-    for (const condition of personality.triggerConditions) {
-      let conditionScore = 0
-      let reason = ''
-
-      switch (condition.type) {
-        case 'emotion':
-          if (emotion && emotion.type === condition.value) {
-            conditionScore = emotion.intensity
-            reason = `情绪匹配：${emotion.type}`
-          }
-          break
-
-        case 'keyword':
-          const keywords = Array.isArray(condition.value) ? condition.value : [condition.value]
-          const matchedKeywords = keywords.filter(keyword => 
-            content.toLowerCase().includes(keyword.toLowerCase())
-          )
-          if (matchedKeywords.length > 0) {
-            conditionScore = Math.min(matchedKeywords.length / keywords.length, 1.0)
-            reason = `关键词匹配：${matchedKeywords.join('、')}`
-          }
-          break
-
-        case 'context':
-          // 根据会话上下文评分
-          conditionScore = await this.evaluateContextMatch(sessionId, condition.value)
-          if (conditionScore > 0) {
-            reason = `上下文匹配：${condition.value}`
-          }
-          break
-
-        case 'time':
-          // 根据时间条件评分
-          conditionScore = this.evaluateTimeCondition(condition.value)
-          if (conditionScore > 0) {
-            reason = `时间条件匹配`
-          }
-          break
+    emotion: any,
+    currentPersonality: string,
+    conversationHistory?: string[]
+  ): Promise<{
+    shouldSwitch: boolean;
+    oldPersonality: string;
+    newPersonality: string;
+    reason: string;
+  }> {
+    console.log(`[AI PersonalitySwitch] 开始AI驱动的人格切换检查`)
+    
+    try {
+      // 使用AI进行全面的人格切换分析
+      const analysis = await this.analyzePersonalitySwitchWithAI(
+        content, 
+        emotion, 
+        currentPersonality,
+        conversationHistory || []
+      )
+      
+      // 根据AI分析结果和置信度决定是否切换
+      let targetPersonality = currentPersonality
+      let reason = analysis.reasoning
+      
+      if (analysis.shouldSwitch && analysis.recommendedPersonality !== 'current') {
+        // 根据紧急程度和置信度决定切换阈值
+        const switchThreshold = this.getSwitchThreshold(analysis.urgency)
+        
+        if (analysis.confidence >= switchThreshold) {
+          targetPersonality = analysis.recommendedPersonality
+          reason = `AI分析建议切换 (置信度: ${(analysis.confidence * 100).toFixed(1)}%, 紧急程度: ${analysis.urgency}): ${analysis.reasoning}`
+          console.log(`[AI PersonalitySwitch] 执行切换: ${currentPersonality} -> ${targetPersonality}`)
+        } else {
+          reason = `AI建议切换但置信度不足 (${(analysis.confidence * 100).toFixed(1)}%)，保持当前人格`
+          console.log(`[AI PersonalitySwitch] 置信度不足，保持当前人格`)
+        }
       }
+      
+      const shouldSwitch = targetPersonality !== currentPersonality
+      
+      console.log(`[AI PersonalitySwitch] 最终决策:`, {
+        shouldSwitch,
+        oldPersonality: currentPersonality,
+        newPersonality: targetPersonality,
+        reason,
+        confidence: analysis.confidence,
+        urgency: analysis.urgency
+      })
+      
+      return {
+        shouldSwitch,
+        oldPersonality: currentPersonality,
+        newPersonality: targetPersonality,
+        reason
+      }
+      
+    } catch (error) {
+      console.error('[AI PersonalitySwitch] AI分析失败:', error)
+      
+      // 降级到简单的关键词匹配
+      return this.getFallbackSwitchDecision(content, emotion, currentPersonality)
+    }
+  }
 
-      if (conditionScore >= condition.threshold) {
-        totalScore += conditionScore * condition.weight
-        totalWeight += condition.weight
-        if (reason) reasons.push(reason)
+  /**
+   * AI驱动的上下文分析
+   * 分析对话上下文，理解用户的深层需求
+   */
+  async analyzeConversationContext(
+    conversationHistory: string[],
+    currentEmotion: any
+  ): Promise<AIContextAnalysis> {
+    console.log(`[AI ContextAnalysis] 开始AI上下文分析`)
+    
+    try {
+      const prompt = this.buildContextAnalysisPrompt(conversationHistory, currentEmotion)
+      
+      const aiRequest = {
+         content: prompt,
+         personality: 'neutral',
+         emotion: currentEmotion,
+         history: this.convertToMessageHistory(conversationHistory)
+       }
+      
+      const aiResponse = await aiService.generateResponse(aiRequest)
+      const analysis = this.parseContextAnalysisResponse(aiResponse.content)
+      
+      console.log(`[AI ContextAnalysis] 上下文分析完成:`, analysis)
+      return analysis
+      
+    } catch (error) {
+      console.error('[AI ContextAnalysis] 上下文分析失败:', error)
+      return this.getFallbackContextAnalysis(currentEmotion)
+    }
+  }
+
+  // ============================================================================
+  // AI提示词构建方法
+  // ============================================================================
+
+  private buildPersonalityRecommendationPrompt(
+    content: string,
+    emotion: any,
+    conversationHistory: string[]
+  ): string {
+    const angelTraits = this.personalities.angel.traits.join('、')
+    const demonTraits = this.personalities.demon.traits.join('、')
+    
+    return `你是一个专业的AI人格分析师，需要根据用户的消息内容、情绪状态和对话历史，推荐最适合的AI助手人格。
+
+可选人格:
+1. 天使形态 (angel): ${angelTraits}
+   - 适用于: 需要安慰、治愈、正面引导、情感支持的场景
+   
+2. 恶魔形态 (demon): ${demonTraits}
+   - 适用于: 需要挑战、刺激、探索内心、突破舒适圈的场景
+
+用户当前消息: "${content}"
+
+情绪分析: ${emotion ? JSON.stringify(emotion) : '无'}
+
+对话历史: ${conversationHistory.length > 0 ? conversationHistory.slice(-3).join('\n') : '无'}
+
+请分析用户的深层需求和情感状态，推荐最适合的人格。考虑以下因素:
+1. 用户的情感需求 (安慰 vs 挑战)
+2. 消息的语调和内容倾向
+3. 对话的整体氛围
+4. 用户可能的心理状态
+
+请以JSON格式返回推荐结果:
+[
+  {
+    "personality": "angel" | "demon",
+    "score": number (0-1),
+    "reasoning": "详细的推荐理由",
+    "confidence": number (0-1),
+    "suitabilityFactors": ["适用性因素列表"]
+  }
+]
+
+注意: 请按适合度排序，最适合的排在前面。`
+  }
+
+  private buildPersonalitySwitchPrompt(
+    content: string,
+    emotion: any,
+    currentPersonality: string,
+    conversationHistory: string[]
+  ): string {
+    const currentPersonalityName = currentPersonality === 'angel' ? '天使形态' : '恶魔形态'
+    const currentTraits = this.personalities[currentPersonality]?.traits.join('、') || ''
+    
+    return `你是一个专业的人格切换分析师，需要判断AI助手是否需要切换人格来更好地服务用户。
+
+当前人格: ${currentPersonalityName} (${currentTraits})
+
+用户消息: "${content}"
+情绪状态: ${emotion ? JSON.stringify(emotion) : '无'}
+对话历史: ${conversationHistory.length > 0 ? conversationHistory.slice(-5).join('\n') : '无'}
+
+请深度分析:
+1. 用户的即时需求是否与当前人格匹配
+2. 用户的情绪变化是否需要不同的应对方式
+3. 对话的发展方向是否需要人格调整
+4. 切换的紧急程度和必要性
+
+请以JSON格式返回分析结果:
+{
+  "shouldSwitch": boolean,
+  "recommendedPersonality": "angel" | "demon" | "current",
+  "confidence": number (0-1),
+  "reasoning": "详细的分析理由",
+  "emotionalFactors": ["情绪相关因素"],
+  "contextualFactors": ["上下文相关因素"],
+  "urgency": "low" | "medium" | "high"
+}
+
+切换原则:
+- 只有在明确有益于用户体验时才建议切换
+- 考虑切换的连续性和自然性
+- 紧急程度反映切换的迫切性`
+  }
+
+  private buildContextAnalysisPrompt(
+    conversationHistory: string[],
+    currentEmotion: any
+  ): string {
+    return `你是一个专业的对话上下文分析师，需要深度分析用户的对话历史和当前状态。
+
+对话历史:
+${conversationHistory.length > 0 ? conversationHistory.slice(-10).join('\n---\n') : '无历史记录'}
+
+当前情绪: ${currentEmotion ? JSON.stringify(currentEmotion) : '无'}
+
+请分析以下维度:
+1. 用户的整体情绪趋势和变化
+2. 用户的深层需求和期望
+3. 对话的整体氛围和走向
+4. 用户的心理状态和可能的困扰
+5. 最适合的沟通方式和策略
+
+请以JSON格式返回分析结果:
+{
+  "userMood": "用户的整体情绪状态",
+  "userNeeds": ["用户的深层需求列表"],
+  "conversationTone": "对话的整体氛围",
+  "emotionalState": "用户的心理状态描述",
+  "recommendedApproach": "推荐的沟通策略"
+}`
+  }
+
+  // ============================================================================
+  // AI响应解析方法
+  // ============================================================================
+
+  private parseAIRecommendationResponse(aiResponse: string): AIPersonalityRecommendation[] {
+    try {
+      const jsonMatch = aiResponse.match(/\[[\s\S]*\]/)
+      if (!jsonMatch) {
+        throw new Error('无法找到JSON数组响应')
+      }
+      
+      const parsed = JSON.parse(jsonMatch[0])
+      
+      return parsed.map((item: any) => ({
+        personality: ['angel', 'demon'].includes(item.personality) ? item.personality : 'angel',
+        score: Math.max(0, Math.min(1, Number(item.score) || 0)),
+        reasoning: String(item.reasoning || ''),
+        confidence: Math.max(0, Math.min(1, Number(item.confidence) || 0)),
+        suitabilityFactors: Array.isArray(item.suitabilityFactors) ? item.suitabilityFactors : []
+      }))
+      
+    } catch (error) {
+      console.error('[AI PersonalityRecommend] 解析推荐响应失败:', error)
+      return this.getFallbackRecommendations(null, '')
+    }
+  }
+
+  private parseAIPersonalityResponse(aiResponse: string): AIPersonalityAnalysis {
+    try {
+      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        throw new Error('无法找到JSON响应')
+      }
+      
+      const parsed = JSON.parse(jsonMatch[0])
+      
+      return {
+        shouldSwitch: Boolean(parsed.shouldSwitch),
+        recommendedPersonality: ['angel', 'demon', 'current'].includes(parsed.recommendedPersonality) 
+          ? parsed.recommendedPersonality 
+          : 'current',
+        confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
+        reasoning: String(parsed.reasoning || ''),
+        emotionalFactors: Array.isArray(parsed.emotionalFactors) ? parsed.emotionalFactors : [],
+        contextualFactors: Array.isArray(parsed.contextualFactors) ? parsed.contextualFactors : [],
+        urgency: ['low', 'medium', 'high'].includes(parsed.urgency) ? parsed.urgency : 'low'
+      }
+    } catch (error) {
+      console.error('[AI PersonalitySwitch] 解析AI响应失败:', error)
+      return {
+        shouldSwitch: false,
+        recommendedPersonality: 'current',
+        confidence: 0.1,
+        reasoning: 'AI响应解析失败，保持当前人格',
+        emotionalFactors: [],
+        contextualFactors: [],
+        urgency: 'low'
       }
     }
+  }
 
-    const finalScore = totalWeight > 0 ? totalScore / totalWeight : 0
-    const confidence = Math.min(totalWeight / personality.triggerConditions.length, 1.0)
+  private parseContextAnalysisResponse(aiResponse: string): AIContextAnalysis {
+    try {
+      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        throw new Error('无法找到JSON响应')
+      }
+      
+      const parsed = JSON.parse(jsonMatch[0])
+      
+      return {
+        userMood: String(parsed.userMood || ''),
+        userNeeds: Array.isArray(parsed.userNeeds) ? parsed.userNeeds : [],
+        conversationTone: String(parsed.conversationTone || ''),
+        emotionalState: String(parsed.emotionalState || ''),
+        recommendedApproach: String(parsed.recommendedApproach || '')
+      }
+    } catch (error) {
+      console.error('[AI ContextAnalysis] 解析上下文分析响应失败:', error)
+      return this.getFallbackContextAnalysis(null)
+    }
+  }
 
+  // ============================================================================
+  // AI分析核心方法
+  // ============================================================================
+
+  private async analyzePersonalitySwitchWithAI(
+    content: string,
+    emotion: any,
+    currentPersonality: string,
+    conversationHistory: string[]
+  ): Promise<AIPersonalityAnalysis> {
+    const prompt = this.buildPersonalitySwitchPrompt(content, emotion, currentPersonality, conversationHistory)
+    
+    const aiRequest = {
+       content: prompt,
+       personality: currentPersonality,
+       emotion: emotion,
+       history: this.convertToMessageHistory(conversationHistory)
+     }
+    
+    const aiResponse = await aiService.generateResponse(aiRequest)
+    return this.parseAIPersonalityResponse(aiResponse.content)
+  }
+
+  // ============================================================================
+   // 辅助方法
+   // ============================================================================
+
+   private convertToMessageHistory(conversationHistory: string[]): any[] {
+     return conversationHistory.map((content, index) => ({
+       id: `msg_${index}`,
+       content: content,
+       role: index % 2 === 0 ? 'user' : 'assistant',
+       timestamp: new Date().toISOString()
+     }))
+   }
+
+   private getSwitchThreshold(urgency: string): number {
+    switch (urgency) {
+      case 'high': return 0.4
+      case 'medium': return 0.6
+      case 'low': return 0.8
+      default: return 0.6
+    }
+  }
+
+  private getFallbackRecommendations(emotion: any, content: string): AIPersonalityRecommendation[] {
+    // 简单的降级推荐逻辑
+    if (emotion?.type === 'sadness' || content.includes('难过') || content.includes('伤心')) {
+      return [{
+        personality: 'angel',
+        score: 0.7,
+        reasoning: '检测到负面情绪，推荐天使形态提供安慰',
+        confidence: 0.6,
+        suitabilityFactors: ['情绪支持', '安慰治愈']
+      }]
+    }
+    
+    if (emotion?.type === 'anger' || content.includes('挑战') || content.includes('刺激')) {
+      return [{
+        personality: 'demon',
+        score: 0.7,
+        reasoning: '检测到挑战需求，推荐恶魔形态',
+        confidence: 0.6,
+        suitabilityFactors: ['挑战引导', '突破舒适圈']
+      }]
+    }
+    
+    return [{
+      personality: 'angel',
+      score: 0.5,
+      reasoning: '默认推荐天使形态',
+      confidence: 0.3,
+      suitabilityFactors: ['通用适用']
+    }]
+  }
+
+  private getFallbackSwitchDecision(content: string, emotion: any, currentPersonality: string) {
+    // 简单的关键词匹配降级逻辑
+    const lowerContent = content.toLowerCase()
+    
+    if (lowerContent.includes('天使') || lowerContent.includes('安慰') || lowerContent.includes('治愈')) {
+      return {
+        shouldSwitch: currentPersonality !== 'angel',
+        oldPersonality: currentPersonality,
+        newPersonality: 'angel',
+        reason: '降级分析：检测到天使相关关键词'
+      }
+    }
+    
+    if (lowerContent.includes('恶魔') || lowerContent.includes('挑战') || lowerContent.includes('刺激')) {
+      return {
+        shouldSwitch: currentPersonality !== 'demon',
+        oldPersonality: currentPersonality,
+        newPersonality: 'demon',
+        reason: '降级分析：检测到恶魔相关关键词'
+      }
+    }
+    
     return {
-      score: finalScore,
-      reasons,
-      confidence
+      shouldSwitch: false,
+      oldPersonality: currentPersonality,
+      newPersonality: currentPersonality,
+      reason: '降级分析：保持当前人格'
     }
   }
 
-  // 评估上下文匹配
-  private async evaluateContextMatch(sessionId: string, contextType: string): Promise<number> {
-    // 这里可以根据会话历史评估上下文匹配度
-    // 简化实现，返回基础分数
-    return 0.5
-  }
-
-  // 评估时间条件
-  private evaluateTimeCondition(timeCondition: any): number {
-    const now = new Date()
-    const hour = now.getHours()
-
-    // 简单的时间条件评估
-    if (timeCondition.type === 'hour_range') {
-      const { start, end } = timeCondition
-      if (hour >= start && hour <= end) {
-        return 1.0
-      }
+  private getFallbackContextAnalysis(emotion: any): AIContextAnalysis {
+    return {
+      userMood: emotion?.type || '中性',
+      userNeeds: ['基础对话'],
+      conversationTone: '普通',
+      emotionalState: '稳定',
+      recommendedApproach: '友好交流'
     }
-
-    return 0
   }
 
-  // 执行人格切换
+  // ============================================================================
+  // 数据库操作方法 (保持原有功能)
+  // ============================================================================
+
   async switchPersonality(request: PersonalitySwitchRequest): Promise<boolean> {
     try {
       const switchRecord: PersonalitySwitch = {
@@ -315,15 +614,14 @@ class PersonalityService {
         switchRecord.created_at
       )
 
-      console.log(`Personality switched: ${request.fromPersonality} -> ${request.toPersonality}`)
+      console.log(`[AI PersonalityService] 人格切换记录已保存: ${request.fromPersonality} -> ${request.toPersonality}`)
       return true
     } catch (error) {
-      console.error('Error switching personality:', error)
+      console.error('[AI PersonalityService] 保存人格切换记录失败:', error)
       return false
     }
   }
 
-  // 获取人格切换历史
   async getPersonalitySwitchHistory(sessionId: string, limit: number = 20): Promise<PersonalitySwitch[]> {
     try {
       const getHistory = this.db.prepare(`
@@ -339,12 +637,11 @@ class PersonalityService {
         emotion_context: switchRecord.emotion_context ? JSON.parse(switchRecord.emotion_context) : null
       }))
     } catch (error) {
-      console.error('Error getting switch history:', error)
+      console.error('[AI PersonalityService] 获取切换历史失败:', error)
       return []
     }
   }
 
-  // 获取人格使用统计
   async getPersonalityStats(sessionId?: string, days: number = 7) {
     try {
       const cutoffDate = new Date()
@@ -358,7 +655,6 @@ class PersonalityService {
         params.push(sessionId)
       }
 
-      // 人格使用分布
       const distributionQuery = this.db.prepare(`
         SELECT to_personality, COUNT(*) as count 
         FROM personality_switches ${whereClause}
@@ -366,14 +662,12 @@ class PersonalityService {
       `)
       const distribution = distributionQuery.all(...params) as Array<{ to_personality: string; count: number }>
 
-      // 切换频率
       const frequencyQuery = this.db.prepare(`
         SELECT COUNT(*) as total_switches 
         FROM personality_switches ${whereClause}
       `)
       const frequency = frequencyQuery.get(...params) as { total_switches: number }
 
-      // 最常用的切换原因
       const reasonsQuery = this.db.prepare(`
         SELECT reason, COUNT(*) as count 
         FROM personality_switches ${whereClause}
@@ -387,191 +681,38 @@ class PersonalityService {
         distribution,
         totalSwitches: frequency.total_switches,
         topReasons,
-        period: `${days} days`
+        period: `${days} days`,
+        aiDriven: true // 标识这是AI驱动的统计
       }
     } catch (error) {
-      console.error('Error getting personality stats:', error)
+      console.error('[AI PersonalityService] 获取人格统计失败:', error)
       return null
     }
   }
 
-  // 检查是否需要切换人格
+  // ============================================================================
+  // 兼容性方法 (为了保持API兼容性)
+  // ============================================================================
+
+  /**
+   * 兼容性方法：shouldSwitchPersonality
+   * 内部调用新的AI驱动的checkPersonalitySwitch方法
+   */
   async shouldSwitchPersonality(
     currentPersonality: string,
     emotion: any,
     content: string,
     sessionId: string
   ): Promise<{ shouldSwitch: boolean; recommendedPersonality?: string; reason?: string }> {
-    const recommendations = await this.recommendPersonality(emotion, content, sessionId)
-    
-    if (recommendations.length === 0) {
-      return { shouldSwitch: false }
-    }
-
-    const topRecommendation = recommendations[0]
-    
-    // 如果推荐的人格与当前人格不同，且分数足够高
-    if (topRecommendation.personality !== currentPersonality && topRecommendation.score > 0.6) {
-      return {
-        shouldSwitch: true,
-        recommendedPersonality: topRecommendation.personality,
-        reason: topRecommendation.reasons.join('；')
-      }
-    }
-
-    return { shouldSwitch: false }
-  }
-
-  // 检查人格切换（用于socket和聊天路由）
-  async checkPersonalitySwitch(
-    content: string,
-    emotion: any,
-    currentPersonality: string
-  ): Promise<{
-    shouldSwitch: boolean;
-    oldPersonality: string;
-    newPersonality: string;
-    reason: string;
-  }> {
-    console.log(`[PersonalitySwitch] 检查人格切换 - 内容: "${content}", 当前人格: ${currentPersonality}`)
-    
-    // 分析用户消息内容，检测人格切换关键词
-    const lowerContent = content.toLowerCase()
-    
-    // 检测明确的人格切换请求
-    const angelKeywords = ['天使', '变成天使', '切换天使', '天使模式', '温柔', '治愈', '安慰']
-    const demonKeywords = ['恶魔', '变成恶魔', '切换恶魔', '恶魔模式', '诱惑', '挑战', '刺激']
-    
-    let targetPersonality = currentPersonality
-    let reason = ''
-    
-    // 检查明确的切换请求
-    const foundAngelKeyword = angelKeywords.find(keyword => lowerContent.includes(keyword))
-    const foundDemonKeyword = demonKeywords.find(keyword => lowerContent.includes(keyword))
-    
-    if (foundAngelKeyword) {
-      console.log(`[PersonalitySwitch] 检测到天使关键词: "${foundAngelKeyword}"`)
-      if (currentPersonality !== 'angel') {
-        targetPersonality = 'angel'
-        reason = '用户明确请求切换到天使模式'
-        console.log(`[PersonalitySwitch] 将切换到天使模式`)
-      } else {
-        console.log(`[PersonalitySwitch] 已经是天使模式，无需切换`)
-      }
-    } else if (foundDemonKeyword) {
-      console.log(`[PersonalitySwitch] 检测到恶魔关键词: "${foundDemonKeyword}"`)
-      if (currentPersonality !== 'demon') {
-        targetPersonality = 'demon'
-        reason = '用户明确请求切换到恶魔模式'
-        console.log(`[PersonalitySwitch] 将切换到恶魔模式`)
-      } else {
-        console.log(`[PersonalitySwitch] 已经是恶魔模式，无需切换`)
-      }
-    } else {
-      console.log(`[PersonalitySwitch] 未检测到明确关键词，尝试智能切换`)
-      // 基于情绪和内容的智能切换
-      const switchResult = await this.shouldSwitchPersonality(currentPersonality, emotion, content, '')
-      if (switchResult.shouldSwitch && switchResult.recommendedPersonality) {
-        targetPersonality = switchResult.recommendedPersonality
-        reason = switchResult.reason || '基于情绪分析的智能切换'
-        console.log(`[PersonalitySwitch] 智能切换推荐: ${targetPersonality}, 原因: ${reason}`)
-      } else {
-        console.log(`[PersonalitySwitch] 智能切换未推荐切换`)
-      }
-    }
-    
-    const shouldSwitch = targetPersonality !== currentPersonality
-    console.log(`[PersonalitySwitch] 最终结果 - 是否切换: ${shouldSwitch}, 从 ${currentPersonality} 到 ${targetPersonality}`)
-    
+    const result = await this.checkPersonalitySwitch(content, emotion, currentPersonality)
     return {
-      shouldSwitch,
-      oldPersonality: currentPersonality,
-      newPersonality: targetPersonality,
-      reason: reason || '保持当前人格'
-    }
-  }
-
-  // 获取人格描述
-  getPersonalityDescription(personalityId: string): string {
-    const personality = this.getPersonality(personalityId)
-    return personality ? personality.description : '未知人格'
-  }
-
-  // 获取人格语音参数
-  getPersonalityVoiceParams(personalityId: string): VoiceParams | null {
-    const personality = this.getPersonality(personalityId)
-    return personality ? personality.voiceParams : null
-  }
-
-  // 更新人格配置
-  updatePersonality(personalityId: string, updates: Partial<PersonalityConfig>): boolean {
-    if (!this.personalities[personalityId]) {
-      return false
-    }
-
-    this.personalities[personalityId] = {
-      ...this.personalities[personalityId],
-      ...updates
-    }
-
-    return true
-  }
-
-  // 添加自定义人格
-  addCustomPersonality(personality: PersonalityConfig): boolean {
-    if (this.personalities[personality.id]) {
-      return false // 人格已存在
-    }
-
-    this.personalities[personality.id] = personality
-    return true
-  }
-
-  // 删除自定义人格
-  removeCustomPersonality(personalityId: string): boolean {
-    // 不允许删除预定义人格
-    const predefinedIds = ['default', 'tsundere', 'tech', 'warm', 'defensive']
-    if (predefinedIds.includes(personalityId)) {
-      return false
-    }
-
-    if (this.personalities[personalityId]) {
-      delete this.personalities[personalityId]
-      return true
-    }
-
-    return false
-  }
-
-  // 导出人格配置
-  exportPersonalities(): any {
-    return {
-      personalities: this.personalities,
-      exportedAt: new Date().toISOString()
-    }
-  }
-
-  // 导入人格配置
-  importPersonalities(data: any): boolean {
-    try {
-      if (data.personalities) {
-        // 只导入自定义人格，保留预定义人格
-        const predefinedIds = ['default', 'tsundere', 'tech', 'warm', 'defensive']
-        
-        for (const [id, personality] of Object.entries(data.personalities)) {
-          if (!predefinedIds.includes(id)) {
-            this.personalities[id] = personality as PersonalityConfig
-          }
-        }
-        return true
-      }
-      return false
-    } catch (error) {
-      console.error('Error importing personalities:', error)
-      return false
+      shouldSwitch: result.shouldSwitch,
+      recommendedPersonality: result.shouldSwitch ? result.newPersonality : undefined,
+      reason: result.reason
     }
   }
 }
 
+// 导出单例
 export const personalityService = new PersonalityService()
 export default personalityService

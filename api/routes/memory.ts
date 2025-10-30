@@ -1,360 +1,250 @@
-import * as express from 'express'
+import { Router } from 'express'
 import { memoryService } from '../services/memoryService'
+import { validateParams, validateQuery, validateBody } from '../utils/validation'
+import { asyncHandler } from '../middleware'
+import { ResponseUtil, createError } from '../utils/response'
 
-const router = express.Router()
+const router = Router()
 
-// 获取所有记忆片段
-router.get('/fragments', async (req, res) => {
-  try {
+/**
+ * 获取所有记忆片段
+ * GET /api/memory/fragments
+ */
+router.get('/fragments',
+  validateQuery([
+    { field: 'sessionId', required: false, type: 'string' },
+    { field: 'category', required: false, type: 'string' },
+    { field: 'rarity', required: false, type: 'string', enum: ['common', 'rare', 'legendary'] },
+    { field: 'unlocked', required: false, type: 'string', enum: ['true', 'false'] }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId, category, rarity, unlocked } = req.query
-
     const fragments = await memoryService.getMemoryFragments({
       sessionId: sessionId as string,
       category: category as string,
       rarity: rarity as 'common' | 'rare' | 'legendary',
       unlocked: unlocked === 'true'
     })
+    return ResponseUtil.success(res, fragments)
+  })
+)
 
-    res.json({
-      success: true,
-      data: fragments
-    })
-  } catch (error) {
-    console.error('Error getting memory fragments:', error)
-    res.status(500).json({
-      error: 'Failed to get memory fragments'
-    })
-  }
-})
-
-// 获取特定记忆片段
-router.get('/fragments/:fragmentId', async (req, res) => {
-  try {
+/**
+ * 获取特定记忆片段
+ * GET /api/memory/fragments/:fragmentId
+ */
+router.get('/fragments/:fragmentId',
+  validateParams([
+    { field: 'fragmentId', required: true, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { fragmentId } = req.params
-
     const fragment = await memoryService.getMemoryFragment(fragmentId)
-
+    
     if (!fragment) {
-      return res.status(404).json({
-        error: 'Memory fragment not found'
-      })
+      return ResponseUtil.error(res, createError.notFound('记忆片段不存在'))
     }
+    
+    return ResponseUtil.success(res, fragment)
+  })
+)
 
-    res.json({
-      success: true,
-      data: fragment
-    })
-  } catch (error) {
-    console.error('Error getting memory fragment:', error)
-    res.status(500).json({
-      error: 'Failed to get memory fragment'
-    })
-  }
-})
-
-// 检查记忆解锁条件
-router.post('/check-unlock', async (req, res) => {
-  try {
-    const { sessionId, emotion, content, personalitySwitches } = req.body
-
-    if (!sessionId) {
-      return res.status(400).json({
-        error: 'Session ID is required'
-      })
-    }
-
-    const unlockResults = await memoryService.checkMemoryUnlockConditions({
+/**
+ * 检查解锁条件
+ * POST /api/memory/check-unlock
+ */
+router.post('/check-unlock', 
+  validateBody([
+    { field: 'sessionId', required: true, type: 'string' },
+    { field: 'content', required: false, type: 'string' },
+    { field: 'emotion', required: false, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
+    const { sessionId, content, emotion } = req.body
+    const result = await memoryService.checkMemoryUnlockConditions({
       sessionId,
-      emotion,
       content,
-      personalitySwitches
+      emotion
     })
+    return ResponseUtil.success(res, result)
+  })
+)
 
-    res.json({
-      success: true,
-      data: unlockResults
-    })
-  } catch (error) {
-    console.error('Error checking unlock conditions:', error)
-    res.status(500).json({
-      error: 'Failed to check unlock conditions'
-    })
-  }
-})
-
-// 解锁记忆片段
-router.post('/unlock', async (req, res) => {
-  try {
-    const { sessionId, fragmentId, trigger } = req.body
-
-    if (!sessionId || !fragmentId) {
-      return res.status(400).json({
-        error: 'Session ID and fragment ID are required'
-      })
-    }
-
-    const unlockResult = await memoryService.unlockMemoryFragment(
-      fragmentId,
-      sessionId,
-      'manual',
-      trigger || 'Manual unlock'
-    )
-
-    if (!unlockResult) {
-      return res.status(400).json({
-        error: 'Failed to unlock memory fragment'
-      })
-    }
-
-    res.json({
-      success: true,
-      data: unlockResult
-    })
-  } catch (error) {
-    console.error('Error unlocking memory:', error)
-    res.status(500).json({
-      error: 'Failed to unlock memory'
-    })
-  }
-})
-
-// 获取已解锁的记忆
-router.get('/sessions/:sessionId/unlocked', async (req, res) => {
-  try {
-    const { sessionId } = req.params
-    const { limit = 50 } = req.query
-
-    const unlockedMemories = await memoryService.getUnlockedMemories(sessionId)
-
-    res.json({
-      success: true,
-      data: unlockedMemories
-    })
-  } catch (error) {
-    console.error('Error getting unlocked memories:', error)
-    res.status(500).json({
-      error: 'Failed to get unlocked memories'
-    })
-  }
-})
-
-// 获取记忆统计
-router.get('/sessions/:sessionId/stats', async (req, res) => {
-  try {
-    const { sessionId } = req.params
-
-    const stats = await memoryService.getMemoryStats(sessionId)
-
-    res.json({
-      success: true,
-      data: stats
-    })
-  } catch (error) {
-    console.error('Error getting memory stats:', error)
-    res.status(500).json({
-      error: 'Failed to get memory stats'
-    })
-  }
-})
-
-// 获取解锁历史
-router.get('/sessions/:sessionId/unlock-history', async (req, res) => {
-  try {
-    const { sessionId } = req.params
-    const { limit = 100 } = req.query
-
-    const history = await memoryService.getUnlockHistory(
-      sessionId,
-      parseInt(limit as string)
-    )
-
-    res.json({
-      success: true,
-      data: history
-    })
-  } catch (error) {
-    console.error('Error getting unlock history:', error)
-    res.status(500).json({
-      error: 'Failed to get unlock history'
-    })
-  }
-})
-
-// 获取解锁提示
-router.get('/fragments/:fragmentId/hint', async (req, res) => {
-  try {
+/**
+ * 解锁记忆片段
+ * POST /api/memory/unlock/:fragmentId
+ */
+router.post('/unlock/:fragmentId',
+  validateParams([
+    { field: 'fragmentId', required: true, type: 'string' }
+  ]),
+  validateBody([
+    { field: 'sessionId', required: true, type: 'string' },
+    { field: 'reason', required: false, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { fragmentId } = req.params
-    const { sessionId } = req.query
+    const { sessionId, reason = 'manual unlock' } = req.body
+    
+    const result = await memoryService.unlockMemoryFragment(fragmentId, sessionId, 'manual', reason)
+    
+    return ResponseUtil.success(res, {
+      success: result,
+      fragmentId
+    })
+  })
+)
 
+/**
+ * 获取已解锁的记忆片段
+ * GET /api/memory/unlocked/:sessionId
+ */
+router.get('/unlocked/:sessionId',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
+    const { sessionId } = req.params
+    const fragments = await memoryService.getUnlockedMemories(sessionId)
+    return ResponseUtil.success(res, fragments)
+  })
+)
+
+/**
+ * 获取会话统计信息
+ * GET /api/memory/stats/:sessionId
+ */
+router.get('/stats/:sessionId',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
+    const { sessionId } = req.params
+    const stats = await memoryService.getMemoryStats(sessionId)
+    return ResponseUtil.success(res, stats)
+  })
+)
+
+/**
+ * 获取解锁历史
+ * GET /api/memory/unlock-history/:sessionId
+ */
+router.get('/unlock-history/:sessionId',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  validateQuery([
+    { field: 'limit', required: false, type: 'number', min: 1, max: 100 }
+  ]),
+  asyncHandler(async (req, res) => {
+    const { sessionId } = req.params
+    const { limit = 20 } = req.query
+    
+    const history = await memoryService.getUnlockHistory(sessionId, Number(limit))
+    return ResponseUtil.success(res, history)
+  })
+)
+
+/**
+ * 获取解锁提示
+ * GET /api/memory/hint/:fragmentId
+ */
+router.get('/hint/:fragmentId',
+  validateParams([
+    { field: 'fragmentId', required: true, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
+    const { fragmentId } = req.params
     const hint = await memoryService.getUnlockHint(fragmentId)
+    return ResponseUtil.success(res, { hint })
+  })
+)
 
-    if (!hint) {
-      return res.status(404).json({
-        error: 'Memory fragment not found'
-      })
-    }
-
-    res.json({
-      success: true,
-      data: { hint }
-    })
-  } catch (error) {
-    console.error('Error getting unlock hint:', error)
-    res.status(500).json({
-      error: 'Failed to get unlock hint'
-    })
-  }
-})
-
-// 重置会话记忆
-router.post('/sessions/:sessionId/reset', async (req, res) => {
-  try {
+/**
+ * 重置会话记忆
+ * DELETE /api/memory/reset/:sessionId
+ */
+router.delete('/reset/:sessionId',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId } = req.params
+    const result = await memoryService.resetSessionMemories(sessionId)
+    return ResponseUtil.success(res, { success: result })
+  })
+)
 
-    const success = await memoryService.resetSessionMemories(sessionId)
-
-    if (!success) {
-      return res.status(404).json({
-        error: 'Session not found'
-      })
-    }
-
-    res.json({
-      success: true,
-      message: 'Session memories reset successfully'
-    })
-  } catch (error) {
-    console.error('Error resetting memories:', error)
-    res.status(500).json({
-      error: 'Failed to reset memories'
-    })
-  }
-})
-
-// 导出记忆数据
-router.get('/sessions/:sessionId/export', async (req, res) => {
-  try {
+/**
+ * 导出记忆数据
+ * GET /api/memory/export/:sessionId
+ */
+router.get('/export/:sessionId',
+  validateParams([
+    { field: 'sessionId', required: true, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId } = req.params
+    const data = await memoryService.exportMemoryData(sessionId)
+    return ResponseUtil.success(res, data)
+  })
+)
 
-    const exportData = await memoryService.exportMemoryData(sessionId)
+/**
+ * 清理旧数据
+ * DELETE /api/memory/cleanup
+ */
+router.delete('/cleanup',
+  validateQuery([
+    { field: 'days', required: false, type: 'number', min: 1, max: 365 }
+  ]),
+  asyncHandler(async (req, res) => {
+    const { days = 90 } = req.query
+    const deletedCount = await memoryService.cleanupOldUnlocks(Number(days))
+    return ResponseUtil.success(res, { deletedCount })
+  })
+)
 
-    if (!exportData) {
-      return res.status(404).json({
-        error: 'Session not found'
-      })
-    }
-
-    // 设置下载头
-    res.setHeader('Content-Type', 'application/json')
-    res.setHeader('Content-Disposition', `attachment; filename="memory_${sessionId}_${Date.now()}.json"`)
-
-    res.json(exportData)
-  } catch (error) {
-    console.error('Error exporting memory data:', error)
-    res.status(500).json({
-      error: 'Failed to export memory data'
-    })
-  }
-})
-
-// 清理旧的解锁记录
-router.post('/cleanup', async (req, res) => {
-  try {
-    const { daysOld = 90 } = req.body
-
-    const cleanedCount = await memoryService.cleanupOldUnlocks(daysOld)
-
-    res.json({
-      success: true,
-      message: `Cleaned up ${cleanedCount} old unlock records`,
-      data: { cleanedCount }
-    })
-  } catch (error) {
-    console.error('Error cleaning up unlock records:', error)
-    res.status(500).json({
-      error: 'Failed to cleanup unlock records'
-    })
-  }
-})
-
-// 获取分类统计
-router.get('/stats/categories', async (req, res) => {
-  try {
+/**
+ * 获取分类统计
+ * GET /api/memory/stats/categories
+ */
+router.get('/stats/categories',
+  validateQuery([
+    { field: 'sessionId', required: false, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId } = req.query
+    const categories = ['childhood', 'family', 'school', 'friendship', 'love', 'career', 'travel', 'hobbies']
+    const stats = await Promise.all(
+      categories.map(async (category) => ({
+        category,
+        fragments: await memoryService.getMemoriesByCategory(category, sessionId as string)
+      }))
+    )
+    return ResponseUtil.success(res, stats)
+  })
+)
 
-    const stats = await memoryService.getMemoryStats(sessionId as string)
-
-    res.json({
-      success: true,
-      data: stats
-    })
-  } catch (error) {
-    console.error('Error getting category stats:', error)
-    res.status(500).json({
-      error: 'Failed to get category stats'
-    })
-  }
-})
-
-// 获取稀有度统计
-router.get('/stats/rarity', async (req, res) => {
-  try {
+/**
+ * 获取稀有度统计
+ * GET /api/memory/stats/rarity
+ */
+router.get('/stats/rarity',
+  validateQuery([
+    { field: 'sessionId', required: false, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { sessionId } = req.query
-
-    const stats = await memoryService.getMemoryStats(sessionId as string)
-
-    res.json({
-      success: true,
-      data: stats
-    })
-  } catch (error) {
-    console.error('Error getting rarity stats:', error)
-    res.status(500).json({
-      error: 'Failed to get rarity stats'
-    })
-  }
-})
-
-// 批量检查解锁条件
-router.post('/batch-check', async (req, res) => {
-  try {
-    const { sessions } = req.body
-
-    if (!sessions || !Array.isArray(sessions)) {
-      return res.status(400).json({
-        error: 'Sessions array is required'
-      })
-    }
-
-    const results = []
-
-    for (const session of sessions) {
-      try {
-        const unlockResults = await memoryService.checkMemoryUnlockConditions(session)
-        results.push({
-          sessionId: session.sessionId,
-          success: true,
-          data: unlockResults
-        })
-      } catch (error) {
-        results.push({
-          sessionId: session.sessionId,
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        })
-      }
-    }
-
-    res.json({
-      success: true,
-      data: results
-    })
-  } catch (error) {
-    console.error('Error batch checking unlock conditions:', error)
-    res.status(500).json({
-      error: 'Failed to batch check unlock conditions'
-    })
-  }
-})
+    const rarities = ['common', 'rare', 'legendary'] as const
+    const stats = await Promise.all(
+      rarities.map(async (rarity) => ({
+        rarity,
+        fragments: await memoryService.getMemoriesByRarity(rarity, sessionId as string)
+      }))
+    )
+    return ResponseUtil.success(res, stats)
+  })
+)
 
 export default router

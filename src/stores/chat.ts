@@ -1,34 +1,43 @@
 import { defineStore } from 'pinia'
 import { apiClient } from '@/utils/api'
-import { socketManager } from '@/utils/socket'
 
 export interface ChatMessage {
-  id: string
+  id: number | string  // 支持后端的number id和前端的string id
+  session_id: number | string
   content: string
   role: 'user' | 'assistant'
-  timestamp: Date
   personality?: string
-  emotion?: any
+  emotion?: string
+  voiceParams?: {
+    voice: string
+    emotion: string
+    speed: number
+    pitch: number
+  }
+  timestamp?: number | Date
+  created_at: string
+  // 前端特有字段
   isTyping?: boolean
   audioUrl?: string
   memoryTriggered?: string[]
-  session_id?: string
   sender?: string
-  created_at?: string
 }
 
 export interface ChatSession {
-  id: string
+  id: number | string  // 支持后端的number id和前端的string id
+  user_id?: number
   title: string
-  personality: string
+  current_personality: string
   lastMessage?: string
-  lastMessageTime?: Date
-  messageCount: number
-  isActive: boolean
+  lastMessageTime?: number | Date
+  lastPersonality?: string
+  created_at: string
+  updated_at: string
+  // 前端特有字段
+  messageCount?: number
+  isActive?: boolean
   emotionHistory?: any[]
   memoryUnlocked?: number
-  lastPersonality?: string
-  updated_at?: string
 }
 
 export interface SendMessageResponse {
@@ -137,75 +146,32 @@ export const useChatStore = defineStore('chat', {
       }
     },
 
-    // 等待Socket连接建立
-    async waitForSocketConnection(maxWaitTime = 10000) {
-      const startTime = Date.now()
-      
-      while (!socketManager.isSocketConnected()) {
-        if (Date.now() - startTime > maxWaitTime) {
-          throw new Error('Socket连接超时，请检查网络连接')
-        }
-        
-        // 如果Socket还没有连接，尝试连接
-        if (!socketManager.isSocketConnected()) {
-          socketManager.connect()
-        }
-        
-        // 等待100ms后再检查
-        await new Promise(resolve => setTimeout(resolve, 100))
-      }
-    },
-
     async loadSessions() {
       try {
         this.isLoading = true
         
-        // 检查Socket连接状态
-        if (!socketManager.isSocketConnected()) {
-          console.warn('Socket 连接未建立，无法加载会话')
-          return
-        }
-        
-        const socketId = socketManager.getSocketId()
-        if (!socketId) {
-          console.warn('Socket ID 获取失败，无法加载会话')
-          return
-        }
-        
-        const response = await apiClient.get('/chat/sessions', {
-          params: { socketId }
-        })
+        const response = await apiClient.get('/chat/sessions')
         
         if (response.data.success) {
-          const serverSessions = response.data.data.sessions || []
-          
-          // 检查当前选中的会话是否还存在于服务器返回的会话列表中
-          const currentSessionExists = serverSessions.some((s: ChatSession) => s.id === this.currentSessionId)
-          
-          // 更新会话列表
-          this.sessions = serverSessions
-          
-          // 清理不存在的会话的消息
-          const validSessionIds = new Set(serverSessions.map((s: ChatSession) => s.id))
-          this.messages = this.messages.filter(m => !m.session_id || validSessionIds.has(m.session_id))
-          
-          // 如果当前选中的会话不存在，重新选择
-          if (!currentSessionExists) {
-            this.currentSessionId = null
-            this.currentPersonality = 'angel'
-          }
-          
-          // 如果有会话但没有选中的会话，选中第一个
-          if (this.sessions.length > 0 && !this.currentSessionId) {
-            await this.selectSession(this.sessions[0].id)
-          }
+          this.sessions = response.data.data.map((session: any) => ({
+            ...session,
+            lastMessageTime: session.updated_at ? new Date(session.updated_at) : new Date(),
+            isActive: false
+          }))
           
           // 保存到本地存储
           this.saveChatDataToLocal()
+        } else {
+          console.error('加载会话失败:', response.data.message)
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('加载会话失败:', error)
-        throw error
+        
+        // 如果网络错误，尝试从本地存储加载
+        if (error.code === 'NETWORK_ERROR' || !navigator.onLine) {
+          console.log('网络不可用，从本地存储加载会话数据')
+          this.loadChatDataFromLocal()
+        }
       } finally {
         this.isLoading = false
       }
@@ -256,17 +222,8 @@ export const useChatStore = defineStore('chat', {
       try {
         this.isLoading = true
         
-        // 等待Socket连接建立
-        await this.waitForSocketConnection()
-        
-        const socketId = socketManager.getSocketId()
-        if (!socketId) {
-          throw new Error('Socket ID 获取失败，请稍后重试')
-        }
-        
         const response = await apiClient.post('/chat/sessions', {
-          title: `新对话 ${new Date().toLocaleString()}`,
-          socketId
+          personality: this.currentPersonality
         })
         
         if (response.data.success) {
@@ -274,8 +231,8 @@ export const useChatStore = defineStore('chat', {
           this.sessions.unshift(newSession)
           await this.selectSession(newSession.id)
           
-          // 重置人格为默认
-          this.currentPersonality = 'angel'
+          // 保存到本地存储
+          this.saveChatDataToLocal()
           
           return newSession
         } else {

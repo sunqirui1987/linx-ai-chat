@@ -8,7 +8,6 @@ import { affinityService } from './affinityService'
 
 export interface CreateSessionRequest {
   personality?: string
-  socketId: string
   title?: string
 }
 
@@ -83,7 +82,7 @@ class ChatService {
   }
 
   // 获取会话列表
-  async getSessions(socketId?: string): Promise<ChatSession[]> {
+  async getSessions(): Promise<ChatSession[]> {
     const getSessions = this.db.prepare(`
       SELECT * FROM chat_sessions 
       WHERE is_active = 1 

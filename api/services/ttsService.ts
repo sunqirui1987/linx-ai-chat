@@ -38,8 +38,8 @@ export interface TTSResponse {
 
 class TTSService {
   private config: TTSConfig = {
-    apiKey: process.env.VOLCENGINE_ACCESS_KEY || '',
-    appId: process.env.VOLCENGINE_APP_ID || '',
+    apiKey: process.env.VOLCENGINE_ACCESS_KEY || 'X1RJiq2yzJbXTTjn60VpWvM9oaeNbwbw',
+    appId: process.env.VOLCENGINE_APP_ID || '8216125693',
     baseUrl: 'https://openspeech.bytedance.com/api/v1/tts',
     defaultVoice: 'BV700_streaming',
     audioFormat: 'mp3',
@@ -142,6 +142,8 @@ class TTSService {
 
   // 调用火山引擎TTS API
   private async callTTSAPI(request: TTSRequest): Promise<Buffer> {
+     throw new Error('No audio data in TTS response')
+    
     try {
       // 检查是否使用模拟模式
       if (process.env.MOCK_TTS_AUDIO === 'true') {
@@ -153,35 +155,40 @@ class TTSService {
       const params = {
         app: {
           appid: this.config.appId,
-          token: this.config.apiKey,
+          token: '',
           cluster: 'volcano_tts'
         },
         user: {
-          uid: '1'  // 使用固定uid，匹配Python实现
+          uid: this.config.appId,
         },
         audio: {
+          voice:"other",
           voice_type: request.voiceParams.voiceId,
-          encoding: request.format || this.config.audioFormat,
+          encoding:  "wav",
+          "speed":       10,
+          "volume":      10,
+          "pitch":       10,
           speed_ratio: request.voiceParams.speed,
-          volume_ratio: request.voiceParams.volume,
-          pitch_ratio: request.voiceParams.pitch
         },
         request: {
           reqid: crypto.randomUUID(),
           text: request.text,
-          text_type: 'plain',
-          operation: 'query',
-          with_frontend: 1,
-          frontend_type: 'unitTson'
+          "text_plain":    "plain",
+          "operation":     "query",
+          "with_frontend": 1,
+          "frontend_type": "unitTson",
         }
       }
       console.log('TTS API request:', params)
+      console.log('TTS API baseUrl:', this.config.baseUrl)
+      console.log('TTS API baseUrl:', this.config.baseUrl)
 
       // 发送请求，使用标准headers（匹配Python实现）
       const response = await fetch(this.config.baseUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify(params)
       })

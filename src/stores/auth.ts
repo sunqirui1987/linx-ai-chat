@@ -1,12 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient } from '../utils/api'
-import { socketManager } from '../utils/socket'
 
 interface User {
   id: number
   username: string
   created_at: string
+  updated_at?: string
 }
 
 interface LoginCredentials {
@@ -32,6 +32,9 @@ export const useAuthStore = defineStore('auth', () => {
   const login = async (credentials: LoginCredentials) => {
     try {
       isLoading.value = true
+      console.log('🔍 Frontend login credentials:', credentials)
+      console.log('🔍 Credentials type:', typeof credentials)
+      console.log('🔍 Credentials JSON:', JSON.stringify(credentials))
       const response = await apiClient.post('/auth/login', credentials)
       
       if (response.data.success) {
@@ -44,16 +47,13 @@ export const useAuthStore = defineStore('auth', () => {
         // 设置API客户端的默认token
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
         
-        // 连接Socket
-        socketManager.connect()
-        
         return response.data
       } else {
         throw new Error(response.data.message || '登录失败')
       }
     } catch (error: any) {
       console.error('登录失败:', error)
-      throw new Error(error.response?.data?.message || '登录失败')
+      throw new Error(error.response?.data?.message || error.message || '登录失败')
     } finally {
       isLoading.value = false
     }
@@ -73,9 +73,6 @@ export const useAuthStore = defineStore('auth', () => {
         
         // 设置API客户端的默认token
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
-        
-        // 连接Socket
-        socketManager.connect()
         
         return response.data
       } else {
@@ -105,9 +102,6 @@ export const useAuthStore = defineStore('auth', () => {
       
       // 清除API客户端的token
       delete apiClient.defaults.headers.common['Authorization']
-      
-      // 断开Socket连接
-      socketManager.disconnect()
     }
   }
 
@@ -124,12 +118,6 @@ export const useAuthStore = defineStore('auth', () => {
       
       if (response.data.success) {
         user.value = response.data.data.user
-        
-        // 连接Socket（如果还没有连接）
-        if (!socketManager.isSocketConnected()) {
-          socketManager.connect()
-        }
-        
         return response.data
       } else {
         throw new Error('Token验证失败')

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import apiClient from '@/utils/api'
+import { useChatStore } from './chat'
 
 export interface MemoryFragment {
   id: string
@@ -96,7 +97,17 @@ export const useMemoryFragmentStore = defineStore('memoryFragment', () => {
       isLoading.value = true
       error.value = null
       
-      const response = await apiClient.get('/memory-fragments')
+      const chatStore = useChatStore()
+      const sessionId = chatStore.currentSessionId
+      
+      if (!sessionId) {
+        error.value = '没有活动的会话'
+        return
+      }
+      
+      const response = await apiClient.get('/memory-fragments', {
+        params: { session_id: sessionId }
+      })
       if (response.data.success) {
         fragments.value = response.data.data
       } else {
@@ -111,7 +122,17 @@ export const useMemoryFragmentStore = defineStore('memoryFragment', () => {
 
   const fetchUnlockedFragments = async () => {
     try {
-      const response = await apiClient.get('/memory-fragments/unlocked')
+      const chatStore = useChatStore()
+      const sessionId = chatStore.currentSessionId
+      
+      if (!sessionId) {
+        console.error('没有活动的会话')
+        return
+      }
+      
+      const response = await apiClient.get('/memory-fragments/unlocked', {
+        params: { session_id: sessionId }
+      })
       if (response.data.success) {
         unlockedFragments.value = response.data.data
       }
@@ -122,7 +143,17 @@ export const useMemoryFragmentStore = defineStore('memoryFragment', () => {
 
   const getFragmentsByCategory = async (category: string) => {
     try {
-      const response = await apiClient.get(`/memory-fragments/category/${category}`)
+      const chatStore = useChatStore()
+      const sessionId = chatStore.currentSessionId
+      
+      if (!sessionId) {
+        console.error('没有活动的会话')
+        return []
+      }
+      
+      const response = await apiClient.get(`/memory-fragments/category/${category}`, {
+        params: { session_id: sessionId }
+      })
       if (response.data.success) {
         return response.data.data
       }
@@ -161,7 +192,16 @@ export const useMemoryFragmentStore = defineStore('memoryFragment', () => {
 
   const checkUnlockConditions = async (): Promise<UnlockResult> => {
     try {
-      const response = await apiClient.post('/memory-fragments/check-unlock')
+      const chatStore = useChatStore()
+      const sessionId = chatStore.currentSessionId
+      
+      if (!sessionId) {
+        return { success: false, newlyUnlocked: [], message: '没有活动的会话' }
+      }
+      
+      const response = await apiClient.post('/memory-fragments/check-unlock', {
+        session_id: sessionId
+      })
       if (response.data.success) {
         const result = response.data.data
         
@@ -181,7 +221,17 @@ export const useMemoryFragmentStore = defineStore('memoryFragment', () => {
 
   const unlockFragment = async (fragmentId: string): Promise<boolean> => {
     try {
-      const response = await apiClient.post(`/memory-fragments/${fragmentId}/unlock`)
+      const chatStore = useChatStore()
+      const sessionId = chatStore.currentSessionId
+      
+      if (!sessionId) {
+        console.error('没有活动的会话')
+        return false
+      }
+      
+      const response = await apiClient.post(`/memory-fragments/${fragmentId}/unlock`, {
+        session_id: sessionId
+      })
       if (response.data.success) {
         await fetchFragments() // 重新获取最新状态
         return true
@@ -195,7 +245,17 @@ export const useMemoryFragmentStore = defineStore('memoryFragment', () => {
 
   const fetchStats = async () => {
     try {
-      const response = await apiClient.get('/memory-fragments/stats')
+      const chatStore = useChatStore()
+      const sessionId = chatStore.currentSessionId
+      
+      if (!sessionId) {
+        console.error('没有活动的会话')
+        return null
+      }
+      
+      const response = await apiClient.get('/memory-fragments/stats', {
+        params: { session_id: sessionId }
+      })
       if (response.data.success) {
         stats.value = response.data.data
         return response.data.data
@@ -209,7 +269,17 @@ export const useMemoryFragmentStore = defineStore('memoryFragment', () => {
 
   const getUnlockHistory = async (limit: number = 20) => {
     try {
-      const response = await apiClient.get(`/memory-fragments/unlock-history?limit=${limit}`)
+      const chatStore = useChatStore()
+      const sessionId = chatStore.currentSessionId
+      
+      if (!sessionId) {
+        console.error('没有活动的会话')
+        return []
+      }
+      
+      const response = await apiClient.get(`/memory-fragments/unlock-history`, {
+        params: { session_id: sessionId, limit }
+      })
       if (response.data.success) {
         return response.data.data
       }
@@ -238,7 +308,17 @@ export const useMemoryFragmentStore = defineStore('memoryFragment', () => {
       isLoading.value = true
       error.value = null
       
-      const response = await apiClient.post('/memory-fragments/reset')
+      const chatStore = useChatStore()
+      const sessionId = chatStore.currentSessionId
+      
+      if (!sessionId) {
+        error.value = '没有活动的会话'
+        return false
+      }
+      
+      const response = await apiClient.post('/memory-fragments/reset', {
+        session_id: sessionId
+      })
       if (response.data.success) {
         fragments.value = []
         unlockedFragments.value = []

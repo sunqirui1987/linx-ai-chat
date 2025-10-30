@@ -1,11 +1,29 @@
-import express from 'express'
+/**
+ * AI服务API路由
+ * 处理AI响应生成、配置管理、模型信息等
+ * 使用新的架构模式：统一响应格式、错误处理、输入验证
+ */
+import * as express from 'express'
 import { aiService } from '../services/aiService'
+import { ResponseUtil, createError } from '../utils/response'
+import { validateBody, validateQuery } from '../utils/validation'
+import { asyncHandler } from '../middleware'
 
 const router = express.Router()
 
-// 生成AI回应
-router.post('/generate', async (req, res) => {
-  try {
+/**
+ * 生成AI回应
+ * POST /api/ai/generate
+ */
+router.post('/generate',
+  validateBody([
+    { field: 'content', required: true, type: 'string', minLength: 1 },
+    { field: 'personality', required: false, type: 'string' },
+    { field: 'emotion', required: false, type: 'object' },
+    { field: 'history', required: false, type: 'array' },
+    { field: 'memoryFragments', required: false, type: 'array' }
+  ]),
+  asyncHandler(async (req, res) => {
     const {
       content,
       personality = 'angel',
@@ -13,12 +31,6 @@ router.post('/generate', async (req, res) => {
       history = [],
       memoryFragments = []
     } = req.body
-
-    if (!content || !content.trim()) {
-      return res.status(400).json({
-        error: 'Content is required for AI generation'
-      })
-    }
 
     const response = await aiService.generateResponse({
       content: content.trim(),
@@ -28,37 +40,33 @@ router.post('/generate', async (req, res) => {
       memoryFragments
     })
 
-    res.json({
-      success: true,
-      data: {
-        content: response.content,
-        suggestions: response.suggestions
-      }
+    ResponseUtil.success(res, {
+      content: response.content,
+      suggestions: response.suggestions
     })
-  } catch (error) {
-    console.error('Error generating AI response:', error)
-    res.status(500).json({
-      error: 'Failed to generate AI response'
-    })
-  }
-})
+  })
+)
 
-// 流式生成AI回应
-router.post('/generate/stream', async (req, res) => {
-  try {
+/**
+ * 流式生成AI回应
+ * POST /api/ai/generate/stream
+ */
+router.post('/generate/stream',
+  validateBody([
+    { field: 'content', required: true, type: 'string', minLength: 1 },
+    { field: 'personality', required: false, type: 'string' },
+    { field: 'emotion', required: false, type: 'object' },
+    { field: 'history', required: false, type: 'array' },
+    { field: 'memoryFragments', required: false, type: 'array' }
+  ]),
+  asyncHandler(async (req, res) => {
     const { 
       content, 
-      personality = 'angel', 
-      emotion = { type: 'neutral', intensity: 0.5 }, 
+      personality = 'angel',
+      emotion = { type: 'neutral', intensity: 0.5 },
       history = [],
       memoryFragments = []
     } = req.body
-
-    if (!content || !content.trim()) {
-      return res.status(400).json({
-        error: 'Content is required for AI generation'
-      })
-    }
 
     // 设置SSE头
     res.writeHead(200, {
@@ -69,303 +77,251 @@ router.post('/generate/stream', async (req, res) => {
       'Access-Control-Allow-Headers': 'Cache-Control'
     })
 
-    await aiService.generateStreamResponse({
-      content: content.trim(),
-      personality,
-      emotion,
-      history,
-      memoryFragments,
-      onChunk: (chunk) => {
-        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`)
-      }
-    })
+    try {
+       await aiService.generateStreamResponse({
+         content: content.trim(),
+         personality,
+         emotion,
+         history,
+         memoryFragments,
+         onChunk: (chunk: string) => {
+           res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`)
+         }
+       })
 
-    // 结束流
-    res.write('data: [DONE]\n\n')
-    res.end()
+       res.write('data: [DONE]\n\n')
+       res.end()
+     } catch (error) {
+       res.write(`data: ${JSON.stringify({ error: 'Stream generation failed' })}\n\n`)
+       res.end()
+     }
+  })
+)
 
-  } catch (error) {
-    console.error('Error generating AI stream:', error)
-    res.status(500).json({
-      error: 'Failed to generate AI stream'
-    })
-  }
-})
+/**
+ * 获取建议回复
+ * POST /api/ai/suggestions
+ */
+router.post('/suggestions',
+  validateBody([
+    { field: 'content', required: true, type: 'string', minLength: 1 },
+    { field: 'personality', required: false, type: 'string' },
+    { field: 'count', required: false, type: 'number', min: 1, max: 10 }
+  ]),
+  asyncHandler(async (req, res) => {
+    const { content, personality = 'angel', count = 3 } = req.body
 
-// 生成建议回复
-router.post('/suggestions', async (req, res) => {
-  try {
-    const { personality = 'angel', content = '' } = req.body
+    const suggestions = await aiService.generateSuggestions(content.trim(), personality)
 
-    const suggestions = await aiService.generateSuggestions(content, personality)
+    ResponseUtil.success(res, { suggestions })
+  })
+)
 
-    res.json({
-      success: true,
-      data: suggestions
-    })
-  } catch (error) {
-    console.error('Error generating suggestions:', error)
-    res.status(500).json({
-      error: 'Failed to generate suggestions'
-    })
-  }
-})
-
-// 获取AI配置
-router.get('/config', async (req, res) => {
-  try {
+/**
+ * 获取AI配置
+ * GET /api/ai/config
+ */
+router.get('/config',
+  asyncHandler(async (req, res) => {
     const config = aiService.getConfig()
+     ResponseUtil.success(res, config)
+  })
+)
 
-    res.json({
-      success: true,
-      data: config
-    })
-  } catch (error) {
-    console.error('Error getting AI config:', error)
-    res.status(500).json({
-      error: 'Failed to get AI config'
-    })
-  }
-})
+/**
+ * 更新AI配置
+ * PUT /api/ai/config
+ */
+router.put('/config',
+  validateBody([
+    { field: 'model', required: false, type: 'string' },
+    { field: 'temperature', required: false, type: 'number', min: 0, max: 2 },
+    { field: 'maxTokens', required: false, type: 'number', min: 1, max: 4000 },
+    { field: 'topP', required: false, type: 'number', min: 0, max: 1 }
+  ]),
+  asyncHandler(async (req, res) => {
+    aiService.updateConfig(req.body)
+     const config = aiService.getConfig()
+     ResponseUtil.success(res, config)
+  })
+)
 
-// 更新AI配置
-router.put('/config', async (req, res) => {
-  try {
-    const config = req.body
+/**
+ * 测试AI连接
+ * POST /api/ai/test
+ */
+router.post('/test',
+  validateBody([
+    { field: 'message', required: false, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
+    const { message = 'Hello, this is a test message.' } = req.body
+    
+    const result = await aiService.testConnection()
+     ResponseUtil.success(res, { 
+       status: result ? 'connected' : 'disconnected',
+       message: message,
+       timestamp: new Date().toISOString()
+     })
+   })
+ )
 
-    if (!config) {
-      return res.status(400).json({
-        error: 'Configuration is required'
-      })
-    }
+ /**
+  * 获取模型信息
+  * GET /api/ai/model/info
+  */
+ router.get('/model/info',
+   asyncHandler(async (req, res) => {
+     const modelInfo = await aiService.getModelInfo()
+     ResponseUtil.success(res, modelInfo)
+   })
+ )
 
-    aiService.updateConfig(config)
+ /**
+  * 估算token数量
+  * POST /api/ai/tokens/estimate
+  */
+ router.post('/tokens/estimate',
+   validateBody([
+     { field: 'text', required: true, type: 'string', minLength: 1 }
+   ]),
+   asyncHandler(async (req, res) => {
+     const { text } = req.body
+     
+     const tokenCount = aiService.estimateTokens(text)
+     ResponseUtil.success(res, { 
+       text: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+       tokenCount,
+       characterCount: text.length
+     })
+   })
+ )
 
-    res.json({
-      success: true,
-      message: 'AI configuration updated'
-    })
-  } catch (error) {
-    console.error('Error updating AI config:', error)
-    res.status(500).json({
-      error: 'Failed to update AI config'
-    })
-  }
-})
+ /**
+  * 截断文本到指定token数量
+  * POST /api/ai/tokens/truncate
+  */
+ router.post('/tokens/truncate',
+   validateBody([
+     { field: 'text', required: true, type: 'string', minLength: 1 },
+     { field: 'maxTokens', required: true, type: 'number', min: 1 }
+   ]),
+   asyncHandler(async (req, res) => {
+     const { text, maxTokens } = req.body
+     
+     const truncatedText = aiService.truncateToTokenLimit(text, maxTokens)
+     ResponseUtil.success(res, {
+       originalText: text,
+       truncatedText,
+       originalTokens: aiService.estimateTokens(text),
+       truncatedTokens: aiService.estimateTokens(truncatedText),
+       maxTokens
+     })
+   })
+ )
 
-// 测试AI连接
-router.post('/test', async (req, res) => {
-  try {
-    const { message = '你好，这是一个测试消息' } = req.body
+ /**
+  * 批量生成AI回应
+  * POST /api/ai/generate/batch
+  */
+ router.post('/generate/batch',
+   validateBody([
+     { field: 'requests', required: true, type: 'array', minLength: 1, maxLength: 10 },
+     { field: 'personality', required: false, type: 'string' }
+   ]),
+   asyncHandler(async (req, res) => {
+     const { requests, personality = 'angel' } = req.body
 
-    const result = await aiService.testConnection(message)
+     // 验证每个请求都有content字段
+     for (const request of requests) {
+       if (!request.content || typeof request.content !== 'string' || !request.content.trim()) {
+         throw createError.badRequest('每个请求都必须包含有效的content字段')
+       }
+     }
 
-    res.json({
-      success: true,
-      data: result
-    })
-  } catch (error) {
-    console.error('Error testing AI connection:', error)
-    res.status(500).json({
-      error: 'Failed to test AI connection'
-    })
-  }
-})
+     const responses = []
+     for (const request of requests) {
+       try {
+         const response = await aiService.generateResponse({
+           content: request.content.trim(),
+           personality,
+           emotion: request.emotion || { type: 'neutral', intensity: 0.5 },
+           history: request.history || [],
+           memoryFragments: request.memoryFragments || []
+         })
+         responses.push({
+           input: request,
+           success: true,
+           output: response.content,
+           error: null
+         })
+       } catch (error) {
+         responses.push({
+           input: request,
+           success: false,
+           output: null,
+           error: error instanceof Error ? error.message : 'Unknown error'
+         })
+       }
+     }
 
-// 获取模型信息
-router.get('/model/info', async (req, res) => {
-  try {
-    const modelInfo = await aiService.getModelInfo()
+     ResponseUtil.success(res, { responses })
+   })
+ )
 
-    res.json({
-      success: true,
-      data: modelInfo
-    })
-  } catch (error) {
-    console.error('Error getting model info:', error)
-    res.status(500).json({
-      error: 'Failed to get model info'
-    })
-  }
-})
+ /**
+  * 降级处理（当主AI服务不可用时）
+  * POST /api/ai/fallback
+  */
+ router.post('/fallback',
+   validateBody([
+     { field: 'personality', required: false, type: 'string' }
+   ]),
+   asyncHandler(async (req, res) => {
+     const { personality = 'angel' } = req.body
 
-// 估算token数量
-router.post('/tokens/estimate', async (req, res) => {
-  try {
-    const { text } = req.body
+     // 使用内置的fallback响应
+     const fallbackMessages = {
+       angel: '我在这里陪伴你，有什么想聊的吗？',
+       demon: '哼，有什么事就直说吧...'
+     }
 
-    if (!text) {
-      return res.status(400).json({
-        error: 'Text is required for token estimation'
-      })
-    }
+     const content = fallbackMessages[personality as keyof typeof fallbackMessages] || fallbackMessages.angel
 
-    const tokenCount = aiService.estimateTokens(text)
+     ResponseUtil.success(res, {
+       content,
+       personality,
+       isFallback: true
+     })
+   })
+ )
 
-    res.json({
-      success: true,
-      data: {
-        text,
-        tokenCount,
-        characterCount: text.length
-      }
-    })
-  } catch (error) {
-    console.error('Error estimating tokens:', error)
-    res.status(500).json({
-      error: 'Failed to estimate tokens'
-    })
-  }
-})
+ /**
+  * 健康检查
+  * GET /api/ai/health
+  */
+ router.get('/health',
+   asyncHandler(async (req, res) => {
+     const isHealthy = await aiService.testConnection()
+     ResponseUtil.success(res, {
+       status: isHealthy ? 'healthy' : 'unhealthy',
+       aiWorking: isHealthy,
+       timestamp: new Date().toISOString(),
+       details: { connected: isHealthy }
+     })
+   })
+ )
 
-// 截断文本到指定token限制
-router.post('/tokens/truncate', async (req, res) => {
-  try {
-    const { text, maxTokens = 4000 } = req.body
-
-    if (!text) {
-      return res.status(400).json({
-        error: 'Text is required for truncation'
-      })
-    }
-
-    const truncatedText = aiService.truncateToTokenLimit(text, maxTokens)
-
-    res.json({
-      success: true,
-      data: {
-        originalText: text,
-        truncatedText,
-        originalTokens: aiService.estimateTokens(text),
-        truncatedTokens: aiService.estimateTokens(truncatedText),
-        maxTokens
-      }
-    })
-  } catch (error) {
-    console.error('Error truncating text:', error)
-    res.status(500).json({
-      error: 'Failed to truncate text'
-    })
-  }
-})
-
-// 批量生成回应
-router.post('/generate/batch', async (req, res) => {
-  try {
-    const { messages, personality = 'default' } = req.body
-
-    if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({
-        error: 'Messages array is required'
-      })
-    }
-
-    const results = []
-
-    for (const message of messages) {
-      try {
-        const response = await aiService.generateResponse({
-          content: message.content || message,
-          personality,
-          emotion: message.emotion || { type: 'neutral', intensity: 0.5 },
-          history: message.history || [],
-          memoryFragments: message.memoryFragments || []
-        })
-
-        results.push({
-          input: message,
-          success: true,
-          output: response.content,
-          error: null
-        })
-      } catch (error) {
-        results.push({
-          input: message,
-          success: false,
-          output: null,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        })
-      }
-    }
-
-    res.json({
-      success: true,
-      data: results
-    })
-  } catch (error) {
-    console.error('Error batch generating responses:', error)
-    res.status(500).json({
-      error: 'Failed to batch generate responses'
-    })
-  }
-})
-
-// 获取fallback回应
-router.post('/fallback', async (req, res) => {
-  try {
-    const { personality = 'angel', emotion = { type: 'neutral', intensity: 0.5 } } = req.body
-
-    // 使用简单的fallback响应
-    const fallbackMessages = {
-      angel: '我在这里陪伴你，有什么想聊的吗？',
-      demon: '哼，有什么事就直说吧...'
-    }
-
-    const content = fallbackMessages[personality as keyof typeof fallbackMessages] || fallbackMessages.angel
-
-    res.json({
-      success: true,
-      data: {
-        content,
-        personality,
-        isFallback: true
-      }
-    })
-  } catch (error) {
-    console.error('Error getting fallback response:', error)
-    res.status(500).json({
-      error: 'Failed to get fallback response'
-    })
-  }
-})
-
-// 健康检查
-router.get('/health', async (req, res) => {
-  try {
-    const healthCheck = await aiService.testConnection()
-
-    res.json({
-      success: true,
-      data: {
-        status: healthCheck ? 'healthy' : 'unhealthy',
-        aiWorking: healthCheck,
-        timestamp: new Date().toISOString(),
-        details: { connected: healthCheck }
-      }
-    })
-  } catch (error) {
-    console.error('AI health check failed:', error)
-    res.status(500).json({
-      error: 'AI service unhealthy'
-    })
-  }
-})
-
-// 清理AI缓存（如果有的话）
-router.post('/cache/clear', async (req, res) => {
-  try {
-    // 这里可以实现AI缓存清理逻辑
-    // 暂时返回成功响应
-    res.json({
-      success: true,
-      message: 'AI cache cleared'
-    })
-  } catch (error) {
-    console.error('Error clearing AI cache:', error)
-    res.status(500).json({
-      error: 'Failed to clear AI cache'
-    })
-  }
-})
+ /**
+  * 清除缓存
+  * POST /api/ai/cache/clear
+  */
+ router.post('/cache/clear',
+   asyncHandler(async (req, res) => {
+     // 这里可以实现AI缓存清理逻辑
+     // 暂时返回成功响应
+     ResponseUtil.success(res, { message: 'AI缓存已清除' })
+   })
+ )
 
 export default router

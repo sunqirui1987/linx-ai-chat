@@ -1,7 +1,6 @@
 import express from 'express'
 import cors from 'cors'
 import { createServer } from 'http'
-import { Server as SocketIOServer } from 'socket.io'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -12,7 +11,6 @@ const __dirname = path.dirname(__filename)
 
 // 导入服务
 import { database } from './database/database'
-import { initializeSocketManager } from './socket/socketManager'
 
 // 导入路由
 import authRoutes from './routes/auth'
@@ -27,18 +25,6 @@ import memoryFragmentsRoutes from './routes/memory-fragments'
 
 const app = express()
 const server = createServer(app)
-
-// Socket.IO配置
-const io = new SocketIOServer(server, {
-  cors: {
-    origin: process.env.NODE_ENV === 'production' 
-      ? process.env.FRONTEND_URL || 'http://localhost:5173'
-      : ['http://localhost:5173', 'http://localhost:3000'],
-    methods: ['GET', 'POST'],
-    credentials: true
-  },
-  transports: ['websocket', 'polling']
-})
 
 // 中间件配置
 app.use(cors({
@@ -89,9 +75,6 @@ app.use('/api/ai', aiRoutes)
 app.use('/api/affinity', affinityRoutes)
 app.use('/api/memory-fragments', memoryFragmentsRoutes)
 
-// Socket.IO连接处理
-const socketManager = initializeSocketManager(io)
-
 // 错误处理中间件
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Server error:', err)
@@ -131,7 +114,6 @@ async function startServer() {
       console.log(`🚀 Server running on port ${PORT}`)
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`)
       console.log(`🔗 API Base URL: http://localhost:${PORT}/api`)
-      console.log(`🌐 Socket.IO enabled on port ${PORT}`)
       
       if (process.env.NODE_ENV === 'development') {
         console.log(`🎯 Frontend URL: http://localhost:5173`)
@@ -153,10 +135,6 @@ async function gracefulShutdown(signal: string) {
   console.log(`\n🛑 Received ${signal}, starting graceful shutdown...`)
   
   try {
-    // 关闭Socket.IO连接
-    console.log('Closing Socket.IO connections...')
-    io.close()
-    
     // 关闭数据库连接
     console.log('Closing database connection...')
     database.close()
@@ -194,4 +172,4 @@ process.on('unhandledRejection', (reason, promise) => {
 // 启动服务器
 startServer()
 
-export { app, server, io }
+export { app, server }

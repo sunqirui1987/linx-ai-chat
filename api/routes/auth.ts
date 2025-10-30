@@ -1,173 +1,143 @@
 /**
  * 用户认证API路由
  * 处理用户注册、登录、令牌管理等
+ * 使用新的架构模式：统一响应格式、错误处理、输入验证
  */
-import { Router, type Request, type Response } from 'express'
-import crypto from 'crypto'
-import jwt from 'jsonwebtoken'
+import * as express from 'express'
+import * as crypto from 'crypto'
+import * as jwt from 'jsonwebtoken'
 import { authenticateToken, generateToken } from '../middleware/auth.js'
 import { SimpleDatabase } from '../config/simple-db.js'
+import { ResponseUtil, createError } from '../utils/response'
+import { validateBody } from '../utils/validation'
+import { asyncHandler } from '../middleware'
 import type { User, ApiResponse } from '../types/models.js'
 
-const router = Router()
+const router = express.Router()
 
 /**
  * 用户注册
  * POST /api/auth/register
- */// 用户注册
-router.post('/register', (req: Request, res: Response): void => {
-  try {
+ */
+router.post('/register',
+  validateBody([
+    { field: 'username', required: true, type: 'string', minLength: 3, maxLength: 20 },
+    { field: 'password', required: true, type: 'string', minLength: 6, maxLength: 50 }
+  ]),
+  asyncHandler(async (req, res) => {
     const { username, password } = req.body
-
-    if (!username || !password) {
-      res.status(400).json({
-        success: false,
-        error: '用户名和密码不能为空'
-      } as ApiResponse)
-      return
-    }
-
-    if (password.length < 6) {
-      res.status(400).json({
-        success: false,
-        error: '密码长度至少6位'
-      } as ApiResponse)
-      return
-    }
 
     // 检查用户是否已存在
     const existingUser = SimpleDatabase.findUserByUsername(username)
     if (existingUser) {
-      res.status(409).json({
-        success: false,
-        error: '用户名已存在'
-      } as ApiResponse)
-      return
+      throw createError.badRequest('用户名已存在')
     }
 
     // 哈希密码 (使用crypto替代bcrypt)
     const hashedPassword = crypto.createHash('sha256').update(password + 'salt').digest('hex')
 
-    // 创建用户
+    // 创建新用户
     const user = SimpleDatabase.createUser(username, hashedPassword)
-    const userId = user.id
 
-    // 生成JWT token
-    const token = generateToken({ userId, username })
+    // 生成JWT令牌
+    const token = generateToken({ userId: user.id, username: user.username })
 
-    res.status(201).json({
-      success: true,
-      data: {
-        user: { id: userId, username },
-        token
+    ResponseUtil.success(res, {
+      user: {
+        id: user.id,
+        username: user.username,
+        created_at: user.created_at
       },
-      message: '注册成功'
-    } as ApiResponse)
-  } catch (error) {
-    console.error('注册错误:', error)
-    res.status(500).json({
-      success: false,
-      error: '服务器内部错误'
-    } as ApiResponse)
-  }
-})
+      token
+    }, 201)
+  })
+)
 
 /**
  * 用户登录
  * POST /api/auth/login
  */
-router.post('/login', (req: Request, res: Response): void => {
-  try {
+router.post('/login',
+  validateBody([
+    { field: 'username', required: true, type: 'string' },
+    { field: 'password', required: true, type: 'string' }
+  ]),
+  asyncHandler(async (req, res) => {
+    // 调试日志：查看请求体
+    console.log('🔍 Login request body:', req.body)
+    console.log('🔍 Request headers:', req.headers)
+    console.log('🔍 Content-Type:', req.headers['content-type'])
+    
     const { username, password } = req.body
-
-    if (!username || !password) {
-      res.status(400).json({
-        success: false,
-        error: '用户名和密码不能为空'
-      } as ApiResponse)
-      return
-    }
 
     // 查找用户
     const user = SimpleDatabase.findUserByUsername(username)
-
     if (!user) {
-      res.status(401).json({
-        success: false,
-        error: '用户名或密码错误'
-      } as ApiResponse)
-      return
+      throw createError.unauthorized('用户名或密码错误')
     }
 
     // 验证密码
-    const hashedInputPassword = crypto.createHash('sha256').update(password + 'salt').digest('hex')
-    const isValidPassword = hashedInputPassword === user.password
-    if (!isValidPassword) {
-      res.status(401).json({
-        success: false,
-        error: '用户名或密码错误'
-      } as ApiResponse)
-      return
+    const hashedPassword = crypto.createHash('sha256').update(password + 'salt').digest('hex')
+    if (user.password !== hashedPassword) {
+      throw createError.unauthorized('用户名或密码错误')
     }
 
-    // 生成JWT token
+    // 生成JWT令牌
     const token = generateToken({ userId: user.id, username: user.username })
 
-    res.json({
-      success: true,
-      data: {
-        user: { id: user.id, username: user.username },
-        token
+    ResponseUtil.success(res, {
+      user: {
+        id: user.id,
+        username: user.username,
+        created_at: user.created_at
       },
-      message: '登录成功'
-    } as ApiResponse)
-  } catch (error) {
-    console.error('登录错误:', error)
-    res.status(500).json({
-      success: false,
-      error: '服务器内部错误'
-    } as ApiResponse)
-  }
-})
+      token
+    })
+  })
+)
 
 /**
  * 获取当前用户信息
  * GET /api/auth/me
  */
-router.get('/me', authenticateToken, (req: Request, res: Response): void => {
-  res.json({
-    success: true,
-    data: {
-      user: req.user
-    },
-    message: '获取用户信息成功'
-  } as ApiResponse)
-})
+router.get('/me', 
+  authenticateToken,
+  asyncHandler(async (req: any, res) => {
+    const user = req.user
+
+    ResponseUtil.success(res, {
+      id: user.id,
+      username: user.username,
+      created_at: user.created_at
+    })
+  })
+)
 
 /**
- * 验证token
+ * 验证令牌
  * GET /api/auth/verify
  */
-router.get('/verify', authenticateToken, (req: Request, res: Response): void => {
-  res.json({
-    success: true,
-    data: {
+router.get('/verify',
+  authenticateToken,
+  asyncHandler(async (req: any, res) => {
+    ResponseUtil.success(res, {
+      valid: true,
       user: req.user
-    },
-    message: 'Token有效'
-  } as ApiResponse)
-})
+    })
+  })
+)
 
 /**
  * 用户登出
  * POST /api/auth/logout
  */
-router.post('/logout', authenticateToken, (req: Request, res: Response): void => {
-  // 由于使用JWT，登出主要在客户端处理（删除token）
-  res.json({
-    success: true,
-    message: '登出成功'
-  } as ApiResponse)
-})
+router.post('/logout',
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    // 在实际应用中，这里可以将token加入黑名单
+    // 目前只是返回成功响应
+    ResponseUtil.success(res, { message: '登出成功' })
+  })
+)
 
 export default router

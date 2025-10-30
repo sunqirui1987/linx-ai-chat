@@ -1,4 +1,5 @@
 import { personalityService } from './personalityService'
+import { PromptTemplateManager, type EmotionContext } from './prompt-templates'
 
 export interface ChatMessage {
   id: string
@@ -51,14 +52,30 @@ class AIService {
   // 生成AI回应
   async generateResponse(request: AIGenerateRequest): Promise<AIResponse> {
     try {
+      // 构建情绪上下文以获取智能选择的人格
+      const emotionContext: EmotionContext = {
+        userEmotion: request.emotion?.type || 'neutral',
+        conversationCount: request.history?.length || 0,
+        timeOfDay: this.getTimeOfDay(),
+        lastPersonality: this.getLastPersonality(request.history),
+        keywords: this.extractKeywords(request.content),
+        moralValues: {
+          corruption: 0,
+          purity: 0
+        }
+      }
+
+      // 使用智能人格选择
+      const selectedPersonality = PromptTemplateManager.selectPersonalityMode(request.content, emotionContext)
+      
       // 构建提示词
       const prompt = await this.buildPrompt(request)
       
       // 调用AI API
       const response = await this.callAIAPI(prompt, false)
       
-      // 生成建议回复
-      const suggestions = await this.generateSuggestions(response.content, request.personality)
+      // 生成建议回复，使用智能选择的人格
+      const suggestions = await this.generateSuggestions(response.content, selectedPersonality.id)
       
       return {
         content: response.content,
@@ -91,51 +108,43 @@ class AIService {
 
   // 构建提示词
   private async buildPrompt(request: AIGenerateRequest): Promise<string> {
-    // 获取人格配置
-    const personality = personalityService.getPersonality(request.personality)
-    if (!personality) {
-      throw new Error(`Unknown personality: ${request.personality}`)
+    // 构建情绪上下文
+    const emotionContext: EmotionContext = {
+      userEmotion: request.emotion?.type || 'neutral',
+      conversationCount: request.history?.length || 0,
+      timeOfDay: this.getTimeOfDay(),
+      lastPersonality: this.getLastPersonality(request.history),
+      keywords: this.extractKeywords(request.content),
+      moralValues: {
+        corruption: 0, // 可以从用户历史数据中计算
+        purity: 0
+      }
     }
 
-    // 构建系统提示词
-    let systemPrompt = personality.promptTemplate
+    // 检查是否需要解锁记忆片段
+    const memoryTriggers = PromptTemplateManager.checkMemoryUnlock(
+      request.content,
+      emotionContext.conversationCount
+    )
 
-    // 添加情绪上下文
-    if (request.emotion) {
-      systemPrompt += `\n\n当前用户情绪：${request.emotion.type}（强度：${request.emotion.intensity}）`
-      systemPrompt += `\n情绪描述：${request.emotion.context || ''}`
-    }
+    // 获取记忆片段内容
+    const memoryFragmentContents = request.memoryFragments?.map(fragment => 
+      `${fragment.title}: ${fragment.content}`
+    ) || []
 
-    // 添加记忆片段
-    if (request.memoryFragments && request.memoryFragments.length > 0) {
-      systemPrompt += '\n\n已解锁的记忆片段：'
-      request.memoryFragments.forEach((fragment, index) => {
-        systemPrompt += `\n${index + 1}. ${fragment.title}: ${fragment.content}`
-      })
-      systemPrompt += '\n请在适当的时候自然地引用这些记忆片段。'
-    }
-
-    // 构建对话历史
-    let conversationHistory = ''
-    if (request.history && request.history.length > 0) {
-      conversationHistory = '\n\n对话历史：\n'
-      const recentHistory = request.history.slice(-10) // 只取最近10条
-      
-      recentHistory.forEach(msg => {
-        const role = msg.role === 'user' ? '用户' : 'AI'
-        conversationHistory += `${role}：${msg.content}\n`
-      })
-    }
-
-    // 构建完整提示词
-    const fullPrompt = `${systemPrompt}${conversationHistory}\n\n用户：${request.content}\nAI：`
+    // 使用PromptTemplateManager构建智能提示词
+    const fullPrompt = PromptTemplateManager.buildPrompt(
+      request.content,
+      emotionContext,
+      memoryFragmentContents
+    )
 
     // 记录构建的提示词
     console.log('=== AI Service 提示词构建 ===')
-    console.log('人格类型:', request.personality)
-    console.log('系统提示词:', systemPrompt)
+    console.log('情绪上下文:', emotionContext)
     console.log('对话历史长度:', request.history?.length || 0)
     console.log('记忆片段数量:', request.memoryFragments?.length || 0)
+    console.log('记忆触发器:', memoryTriggers)
     console.log('用户情绪:', request.emotion ? `${request.emotion.type}(${request.emotion.intensity})` : '无')
     console.log('完整提示词长度:', fullPrompt.length)
     console.log('完整提示词内容:')
@@ -144,6 +153,40 @@ class AIService {
     console.log('---')
 
     return fullPrompt
+  }
+
+  // 获取当前时间段
+  private getTimeOfDay(): 'morning' | 'afternoon' | 'evening' | 'night' {
+    const hour = new Date().getHours()
+    if (hour >= 6 && hour < 12) return 'morning'
+    if (hour >= 12 && hour < 18) return 'afternoon'
+    if (hour >= 18 && hour < 22) return 'evening'
+    return 'night'
+  }
+
+  // 获取上一次对话的人格类型
+  private getLastPersonality(history: ChatMessage[]): 'demon' | 'angel' {
+    if (!history || history.length === 0) return 'angel'
+    
+    const lastAssistantMessage = history
+      .slice()
+      .reverse()
+      .find(msg => msg.role === 'assistant')
+    
+    return (lastAssistantMessage?.personality as 'demon' | 'angel') || 'angel'
+  }
+
+  // 提取关键词
+  private extractKeywords(content: string): string[] {
+    // 简单的关键词提取，可以后续优化
+    const keywords = content
+      .toLowerCase()
+      .replace(/[^\u4e00-\u9fa5a-zA-Z\s]/g, '') // 保留中英文和空格
+      .split(/\s+/)
+      .filter(word => word.length > 1)
+      .slice(0, 10) // 最多10个关键词
+    
+    return keywords
   }
 
   // 调用AI API
@@ -346,6 +389,8 @@ class AIService {
   async generateSuggestions(content: string, personality: string): Promise<string[]> {
     const personalitySuggestions: { [key: string]: string[] } = {
       default: ['继续聊聊', '有意思', '还有吗？', '说得对'],
+      demon: ['呵呵，有趣', '说下去', '还有什么秘密？', '真相如何？'],
+      angel: ['我理解你', '没关系的', '你很棒', '一切都会好的'],
       tsundere: ['哼，知道了', '才不是呢', '随便啦', '你说什么就是什么'],
       tech: ['详细说明', '数据支持', '逻辑分析', '技术细节'],
       warm: ['谢谢你', '真的吗', '好温暖', '我懂你的感受'],
@@ -379,30 +424,16 @@ class AIService {
   // 生成备用回应
   private getFallbackResponse(personality: string, emotion: any): AIResponse {
     const fallbackResponses: { [key: string]: string[] } = {
-      default: [
-        '哈哈，这个问题有点意思，让我想想怎么回答你~',
-        '嗯...你这么一说，我还真得好好琢磨琢磨',
-        '有意思，不过我现在脑子有点转不过来，稍等一下'
+
+      demon: [
+        '呵呵，这个问题让我有点困惑呢...',
+        '有趣，不过我需要时间来思考真相',
+        '桀桀，你这是在考验我吗？'
       ],
-      tsundere: [
-        '哼！你问的问题太难了，我才不想回答呢...',
-        '真是的，为什么要问这种问题啊，让人很困扰呢',
-        '才、才不是我不知道，只是不想告诉你而已！'
-      ],
-      tech: [
-        '系统正在处理您的请求，请稍候...',
-        '当前查询超出了我的处理能力范围，建议重新表述问题',
-        '数据分析中，暂时无法提供准确回复'
-      ],
-      warm: [
-        '不好意思呢，我现在有点累了，能稍后再聊这个话题吗？',
-        '你的问题很有趣，但我需要一点时间来好好思考',
-        '谢谢你的耐心，我正在努力理解你的意思'
-      ],
-      defensive: [
-        '抱歉，当前无法处理此类请求',
-        '为了确保准确性，建议您重新描述问题',
-        '系统暂时无法提供相关信息'
+      angel: [
+        '亲爱的，我现在有点累了，能稍后再聊吗？',
+        '孩子，这个问题需要我好好思考一下',
+        '不好意思，让我整理一下思绪再回答你'
       ]
     }
 
