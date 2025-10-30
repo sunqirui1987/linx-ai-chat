@@ -187,6 +187,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { Heart, X, Scale, History, AlertCircle } from 'lucide-vue-next'
 import { apiClient } from '@/utils/api'
+import { useChatStore } from '@/stores/chat'
 
 // 定义事件
 defineEmits<{
@@ -282,9 +283,18 @@ const formatDate = (dateString: string) => {
 const loadAffinityData = async () => {
   try {
     isLoading.value = true
-    const response = await apiClient.get('/affinity')
-    if (response.success) {
-      affinityData.value = response.data
+    
+    // 获取当前session_id
+    const chatStore = useChatStore()
+    const sessionId = chatStore.currentSessionId
+    
+    if (!sessionId) {
+      throw new Error('当前没有活跃的聊天会话，请先开始对话')
+    }
+    
+    const response = await apiClient.get(`/affinity?session_id=${sessionId}`)
+    if (response.data.success) {
+      affinityData.value = response.data.data
     }
   } catch (error) {
     console.error('加载好感度数据失败:', error)
@@ -295,9 +305,18 @@ const loadAffinityData = async () => {
 
 const loadChoiceHistory = async () => {
   try {
-    const response = await apiClient.get('/affinity/history?limit=10')
-    if (response.success) {
-      choiceHistory.value = response.data
+    // 获取当前session_id
+    const chatStore = useChatStore()
+    const sessionId = chatStore.currentSessionId
+    
+    if (!sessionId) {
+      console.warn('当前没有活跃的聊天会话，跳过加载选择历史')
+      return
+    }
+    
+    const response = await apiClient.get(`/affinity/history?session_id=${sessionId}&limit=10`)
+    if (response.data.success) {
+      choiceHistory.value = response.data.data
     }
   } catch (error) {
     console.error('加载选择历史失败:', error)

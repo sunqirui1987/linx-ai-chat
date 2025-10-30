@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import apiClient from '@/utils/api'
+import { useChatStore } from './chat'
 
 export interface AffinityData {
   user_id: number
@@ -72,7 +73,15 @@ export const useAffinityStore = defineStore('affinity', () => {
       isLoading.value = true
       error.value = null
       
-      const response = await apiClient.get('/api/affinity')
+      // 获取当前session_id
+      const chatStore = useChatStore()
+      const sessionId = chatStore.currentSessionId
+      
+      if (!sessionId) {
+        throw new Error('当前没有活跃的聊天会话，请先开始对话')
+      }
+      
+      const response = await apiClient.get(`/affinity?session_id=${sessionId}`)
       if (response.data.success) {
         affinityData.value = response.data.data
       } else {
@@ -91,7 +100,7 @@ export const useAffinityStore = defineStore('affinity', () => {
       isLoading.value = true
       error.value = null
 
-      const response = await apiClient.post('/api/affinity/choice', choiceRequest)
+      const response = await apiClient.post('/affinity/choice', choiceRequest)
       if (response.data.success) {
         affinityData.value = response.data.data
         // 重新加载选择历史
@@ -111,7 +120,16 @@ export const useAffinityStore = defineStore('affinity', () => {
 
   const fetchChoiceHistory = async (limit: number = 20) => {
     try {
-      const response = await apiClient.get(`/api/affinity/history?limit=${limit}`)
+      // 获取当前session_id
+      const chatStore = useChatStore()
+      const sessionId = chatStore.currentSessionId
+      
+      if (!sessionId) {
+        console.warn('当前没有活跃的聊天会话，跳过加载选择历史')
+        return
+      }
+      
+      const response = await apiClient.get(`/affinity/history?session_id=${sessionId}&limit=${limit}`)
       if (response.data.success) {
         choiceHistory.value = response.data.data
       } else {
@@ -124,7 +142,7 @@ export const useAffinityStore = defineStore('affinity', () => {
 
   const fetchAffinityStats = async () => {
     try {
-      const response = await apiClient.get('/api/affinity/stats')
+      const response = await apiClient.get('/affinity/stats')
       if (response.data.success) {
         return response.data.data
       } else {
@@ -141,7 +159,7 @@ export const useAffinityStore = defineStore('affinity', () => {
       isLoading.value = true
       error.value = null
 
-      const response = await apiClient.post('/api/affinity/reset')
+      const response = await apiClient.post('/affinity/reset')
       if (response.data.success) {
         affinityData.value = response.data.data
         choiceHistory.value = []

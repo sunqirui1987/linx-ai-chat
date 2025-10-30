@@ -13,6 +13,11 @@ router.get('/', authenticateToken, async (req, res) => {
       return res.status(401).json({ success: false, message: '用户未认证' })
     }
 
+    const sessionId = req.query.session_id as string
+    if (!sessionId) {
+      return res.status(400).json({ success: false, message: '缺少session_id参数' })
+    }
+
     const affinity = await affinityService.getUserAffinity(userId)
     res.json({ success: true, data: affinity })
   } catch (error) {
@@ -65,6 +70,11 @@ router.get('/history', authenticateToken, async (req, res) => {
     const userId = req.user?.userId
     if (!userId) {
       return res.status(401).json({ success: false, message: '用户未认证' })
+    }
+
+    const sessionId = req.query.session_id as string
+    if (!sessionId) {
+      return res.status(400).json({ success: false, message: '缺少session_id参数' })
     }
 
     const limit = parseInt(req.query.limit as string) || 20

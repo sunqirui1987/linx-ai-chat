@@ -185,12 +185,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import {
   Brain, Settings, User, UserCircle, Download, LogOut, ChevronDown,
   Shuffle, Sparkles, X, Heart, Zap, Shield
 } from 'lucide-vue-next'
 import { useAffinityStore } from '@/stores/affinity'
+import { useAuthStore } from '@/stores/auth'
+import { useChatStore } from '@/stores/chat'
 
 // Props
 const props = defineProps<{
@@ -207,8 +209,10 @@ const emit = defineEmits<{
   personalityChange: [personality: string]
 }>()
 
-// Store
+// Stores
 const affinityStore = useAffinityStore()
+const authStore = useAuthStore()
+const chatStore = useChatStore()
 
 // 响应式数据
 const showPersonalitySelector = ref(false)
@@ -324,13 +328,18 @@ const handleClickOutside = (event: MouseEvent) => {
 
 onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
-  // 获取好感度数据
-  try {
-    await affinityStore.fetchAffinityData()
-  } catch (error) {
-    console.error('获取好感度数据失败:', error)
-  }
 })
+
+// 监听认证状态和会话状态，在用户登录且有会话时获取好感度数据
+watch([() => authStore.isAuthenticated, () => chatStore.currentSessionId], async ([isAuth, sessionId]) => {
+  if (isAuth && sessionId) {
+    try {
+      await affinityStore.fetchAffinityData()
+    } catch (error) {
+      console.error('获取好感度数据失败:', error)
+    }
+  }
+}, { immediate: true })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)

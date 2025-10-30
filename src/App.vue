@@ -225,16 +225,26 @@ const logout = async () => {
 
 const initializeUserData = async () => {
   try {
+    // 首先加载会话和其他不依赖会话的数据
     await Promise.all([
       chatStore.loadSessions(),
       memoryStore.loadMemoryFragments(),
-      affinityStore.fetchAffinityData(),
       memoryFragmentStore.fetchFragments()
     ])
     
     // 如果没有会话，创建一个新会话
     if (chatStore.sessions.length === 0) {
       await createNewSession()
+    }
+    
+    // 在有会话后再获取好感度数据
+    if (chatStore.currentSessionId) {
+      try {
+        await affinityStore.fetchAffinityData()
+      } catch (error) {
+        console.warn('获取好感度数据失败:', error)
+        // 不阻止应用初始化，只是记录警告
+      }
     }
   } catch (error) {
     console.error('初始化用户数据失败:', error)
@@ -245,6 +255,15 @@ const initializeUserData = async () => {
 const selectSession = async (sessionId: string) => {
   try {
     await chatStore.selectSession(sessionId)
+    
+    // 切换会话后获取好感度数据
+    if (chatStore.currentSessionId) {
+      try {
+        await affinityStore.fetchAffinityData()
+      } catch (error) {
+        console.warn('获取好感度数据失败:', error)
+      }
+    }
   } catch (error) {
     showNotification('error', '切换会话失败')
   }
@@ -254,6 +273,16 @@ const createNewSession = async () => {
   try {
     isLoading.value = true
     await chatStore.createNewSession()
+    
+    // 创建会话后获取好感度数据
+    if (chatStore.currentSessionId) {
+      try {
+        await affinityStore.fetchAffinityData()
+      } catch (error) {
+        console.warn('获取好感度数据失败:', error)
+      }
+    }
+    
     showNotification('success', '创建新会话成功')
   } catch (error) {
     showNotification('error', '创建会话失败')
@@ -367,6 +396,14 @@ onMounted(async () => {
       await initializeUserData()
     } catch (error) {
       authStore.logout()
+    }
+  } else if (import.meta.env.DEV) {
+    // 开发环境自动登录测试用户
+    try {
+      await authStore.login('testuser', '123456')
+      await initializeUserData()
+    } catch (error) {
+      console.error('自动登录失败:', error)
     }
   }
   
