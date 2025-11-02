@@ -3,14 +3,14 @@
     {
       "id": 1,
       "user_id": 1,
-      "demon_affinity": 64,
+      "demon_affinity": 70,
       "angel_affinity": 100,
       "corruption_value": 38,
-      "purity_value": 87,
-      "total_choices": 21,
+      "purity_value": 90,
+      "total_choices": 24,
       "demon_choices": 0,
       "angel_choices": 4,
-      "updated_at": "2025-11-02T03:27:37.369Z",
+      "updated_at": "2025-11-02T03:41:19.500Z",
       "created_at": "2025-10-30T07:40:05.535Z",
       "last_choice_type": "neutral"
     }
@@ -309,10 +309,52 @@
         "purity_value": 1
       },
       "created_at": "2025-11-02T03:27:37.369Z"
+    },
+    {
+      "id": 22,
+      "user_id": 1,
+      "session_id": "session_1762054030681_au4zoim0j",
+      "choice_type": "neutral",
+      "choice_content": "你是恶魔",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-11-02T03:36:28.408Z"
+    },
+    {
+      "id": 23,
+      "user_id": 1,
+      "session_id": "session_1762054030681_au4zoim0j",
+      "choice_type": "neutral",
+      "choice_content": "选择恶魔这一面",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-11-02T03:37:01.054Z"
+    },
+    {
+      "id": 24,
+      "user_id": 1,
+      "session_id": "session_1762054030681_au4zoim0j",
+      "choice_type": "neutral",
+      "choice_content": "应该辞职去追求梦想吗？",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-11-02T03:41:19.501Z"
     }
   ],
   "counters": {
     "affinity": 1,
-    "affinity_choices": 21
+    "affinity_choices": 24
   }
 }

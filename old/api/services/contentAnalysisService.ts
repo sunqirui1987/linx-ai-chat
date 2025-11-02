@@ -3,6 +3,7 @@ import { memoryService } from './memoryService'
 import { personalityService } from './personalityService'
 import { emotionService } from './emotionService'
 import { affinityService } from './affinityService'
+import { chatService } from './chatService'
 
 export interface ContentAnalysisRequest {
   content: string
@@ -165,19 +166,95 @@ ${lockedMemories.map(m => `- ${m.id}: ${m.title} (解锁条件: ${m.unlock_condi
    */
   private parseLLMResponse(llmResponse: string): ContentAnalysisResult {
     try {
-      // 尝试解析JSON
-      const parsed = JSON.parse(llmResponse)
-      
-      // 验证必要字段
-      if (!parsed.emotion || !parsed.personalityAnalysis || !parsed.memoryAnalysis) {
-        throw new Error('Missing required analysis fields')
+      // 尝试清理响应内容，移除可能的markdown标记
+      let cleanResponse = llmResponse.trim()
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+      } else if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
       }
       
-      return parsed as ContentAnalysisResult
+      const parsed = JSON.parse(cleanResponse)
+      
+      // 验证和修复必要字段
+      const result: ContentAnalysisResult = {
+        emotion: parsed.emotion || {
+          type: 'neutral',
+          intensity: 0.5,
+          description: 'Unable to analyze emotion'
+        },
+        personalityAnalysis: parsed.personalityAnalysis || {
+          shouldSwitch: false,
+          confidence: 0
+        },
+        memoryAnalysis: parsed.memoryAnalysis || {
+          triggeredKeywords: [],
+          emotionalTriggers: [],
+          contextualClues: [],
+          unlockCandidates: [],
+          confidence: 0
+        },
+        affinityAnalysis: parsed.affinityAnalysis || {
+          choiceType: 'neutral',
+          reasoning: 'No clear affinity direction detected',
+          impactLevel: 0
+        },
+        overallAnalysis: parsed.overallAnalysis || {
+          userIntent: 'General conversation',
+          conversationDirection: 'Neutral',
+          recommendedResponse: 'Continue natural conversation'
+        }
+      }
+      
+      // 验证数组字段
+      if (!Array.isArray(result.memoryAnalysis.unlockCandidates)) {
+        result.memoryAnalysis.unlockCandidates = []
+      }
+      if (!Array.isArray(result.memoryAnalysis.triggeredKeywords)) {
+        result.memoryAnalysis.triggeredKeywords = []
+      }
+      if (!Array.isArray(result.memoryAnalysis.emotionalTriggers)) {
+        result.memoryAnalysis.emotionalTriggers = []
+      }
+      if (!Array.isArray(result.memoryAnalysis.contextualClues)) {
+        result.memoryAnalysis.contextualClues = []
+      }
+      
+      return result
       
     } catch (error) {
       console.error('Failed to parse LLM response:', error)
-      throw new Error('Invalid LLM response format')
+      console.error('Raw LLM response:', llmResponse)
+      
+      // 返回默认分析结果而不是抛出错误
+      return {
+        emotion: {
+          type: 'neutral',
+          intensity: 0.5,
+          description: 'Failed to analyze emotion due to parsing error'
+        },
+        personalityAnalysis: {
+          shouldSwitch: false,
+          confidence: 0
+        },
+        memoryAnalysis: {
+          triggeredKeywords: [],
+          emotionalTriggers: [],
+          contextualClues: [],
+          unlockCandidates: [],
+          confidence: 0
+        },
+        affinityAnalysis: {
+          choiceType: 'neutral',
+          reasoning: 'Failed to analyze affinity due to parsing error',
+          impactLevel: 0
+        },
+        overallAnalysis: {
+          userIntent: 'General conversation',
+          conversationDirection: 'Neutral',
+          recommendedResponse: 'Continue natural conversation'
+        }
+      }
     }
   }
   
@@ -219,15 +296,64 @@ ${lockedMemories.map(m => `- ${m.id}: ${m.title} (解锁条件: ${m.unlock_condi
   ): Promise<string[]> {
     const validCandidates: string[] = []
     
-    // 获取所有记忆片段
-    const allMemories = await memoryService.getAllMemoryFragments()
-    const validIds = allMemories.map(m => m.id)
-    
-    for (const candidateId of candidates) {
-      // 检查ID是否存在
-      if (validIds.includes(candidateId)) {
-        validCandidates.push(candidateId)
+    try {
+      // 获取所有未解锁的记忆片段
+      const unlockedMemories = await memoryService.getMemoryFragments({ 
+        sessionId, 
+        unlocked: false 
+      })
+      
+      // 获取会话统计数据用于条件验证
+      const sessionStats = await this.getSessionStats(sessionId)
+      
+      for (const candidateId of candidates) {
+        // 查找对应的记忆片段
+        const memory = unlockedMemories.find(m => m.id === candidateId)
+        if (!memory) {
+          console.warn(`Memory fragment ${candidateId} not found or already unlocked`)
+          continue
+        }
+        
+        // 验证解锁条件
+         let conditions: any = {}
+         try {
+           conditions = typeof memory.unlock_conditions === 'string' 
+             ? JSON.parse(memory.unlock_conditions) 
+             : memory.unlock_conditions
+         } catch (parseError) {
+           console.warn(`Failed to parse unlock conditions for memory ${candidateId}:`, parseError)
+           continue
+         }
+         
+         let conditionsMet = true
+         
+         // 检查对话次数条件
+         if (conditions.conversation_count && sessionStats.messageCount < conditions.conversation_count) {
+           conditionsMet = false
+         }
+         
+         // 检查好感度条件
+         if (conditions.demon_affinity && sessionStats.demonAffinity < conditions.demon_affinity) {
+           conditionsMet = false
+         }
+         
+         if (conditions.angel_affinity && sessionStats.angelAffinity < conditions.angel_affinity) {
+           conditionsMet = false
+         }
+         
+         // 检查选择次数条件
+         if (conditions.choice_count && sessionStats.choiceCount < conditions.choice_count) {
+           conditionsMet = false
+         }
+        
+        if (conditionsMet) {
+          validCandidates.push(candidateId)
+        } else {
+          console.log(`Memory fragment ${candidateId} conditions not met`)
+        }
       }
+    } catch (error) {
+      console.error('Error validating memory unlock candidates:', error)
     }
     
     return validCandidates
@@ -237,12 +363,32 @@ ${lockedMemories.map(m => `- ${m.id}: ${m.title} (解锁条件: ${m.unlock_condi
    * 获取会话统计信息
    */
   private async getSessionStats(sessionId: string) {
-    // 这里应该调用chatService的getSessionStats方法
-    // 暂时返回模拟数据
-    return {
-      messageCount: 0,
-      emotionHistory: [],
-      unlockedMemories: 0
+    try {
+      // 获取真实的会话统计数据
+      const stats = await chatService.getSessionStats(sessionId)
+      if (!stats) {
+        throw new Error('Session not found')
+      }
+      
+      return {
+        messageCount: stats.messages?.total_messages || 0,
+        emotionHistory: stats.emotions || [],
+        unlockedMemories: stats.memoryUnlocked || 0,
+        choiceCount: stats.personalitySwitches || 0,
+        demonAffinity: 50, // 默认值，后续可以通过其他方式获取
+        angelAffinity: 50  // 默认值，后续可以通过其他方式获取
+      }
+    } catch (error) {
+      console.error('Failed to get session stats:', error)
+      // 返回默认值
+      return {
+        messageCount: 0,
+        emotionHistory: [],
+        unlockedMemories: 0,
+        choiceCount: 0,
+        demonAffinity: 0,
+        angelAffinity: 0
+      }
     }
   }
   
