@@ -184,7 +184,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { Heart, X, Scale, History, AlertCircle } from 'lucide-vue-next'
 import { apiClient } from '@/utils/api'
 import { useChatStore } from '@/stores/chat'
@@ -289,7 +289,19 @@ const loadAffinityData = async () => {
     const sessionId = chatStore.currentSessionId
     
     if (!sessionId) {
-      throw new Error('当前没有活跃的聊天会话，请先开始对话')
+      console.warn('当前没有活跃的聊天会话，跳过加载好感度数据')
+      // 设置默认值而不是抛出错误
+      affinityData.value = {
+        demon_affinity: 0,
+        angel_affinity: 0,
+        corruption_value: 0,
+        purity_value: 0,
+        total_choices: 0,
+        demon_choices: 0,
+        angel_choices: 0,
+        last_updated: new Date().toISOString()
+      }
+      return
     }
     
     const response = await apiClient.get(`/affinity?session_id=${sessionId}`)
@@ -298,6 +310,17 @@ const loadAffinityData = async () => {
     }
   } catch (error) {
     console.error('加载好感度数据失败:', error)
+    // 设置默认值以防止界面崩溃
+    affinityData.value = {
+      demon_affinity: 0,
+      angel_affinity: 0,
+      corruption_value: 0,
+      purity_value: 0,
+      total_choices: 0,
+      demon_choices: 0,
+      angel_choices: 0,
+      last_updated: new Date().toISOString()
+    }
   } finally {
     isLoading.value = false
   }
@@ -322,6 +345,15 @@ const loadChoiceHistory = async () => {
     console.error('加载选择历史失败:', error)
   }
 }
+
+// 监听会话变化
+const chatStore = useChatStore()
+watch(() => chatStore.currentSessionId, (newSessionId) => {
+  if (newSessionId) {
+    loadAffinityData()
+    loadChoiceHistory()
+  }
+}, { immediate: false })
 
 // 生命周期
 onMounted(() => {

@@ -83,7 +83,7 @@ export interface AffinityData {
 export interface AffinityChoice {
   id: number
   user_id: number
-  session_id: number
+  session_id: string
   choice_type: 'demon' | 'angel' | 'neutral'
   choice_content: string
   affinity_change: {
@@ -182,7 +182,7 @@ export interface AffinityResponse {
 export interface AffinityChoiceRequest {
   choice_type: 'demon' | 'angel' | 'neutral'
   choice_content: string
-  session_id: number
+  session_id: string
 }
 
 // 记忆片段相关API响应类型

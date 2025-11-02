@@ -117,7 +117,7 @@ export const useAuthStore = defineStore('auth', () => {
       const response = await apiClient.get('/auth/me')
       
       if (response.data.success) {
-        user.value = response.data.data.user
+        user.value = response.data.data
         return response.data
       } else {
         throw new Error('Token验证失败')
@@ -149,9 +149,14 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // 初始化时设置token
+  // 初始化时设置token并验证
   if (token.value) {
     apiClient.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
+    // 自动验证token并获取用户信息
+    validateToken().catch(() => {
+      // 如果验证失败，清除无效的token
+      logout()
+    })
   }
 
   return {

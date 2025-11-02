@@ -1,7 +1,7 @@
 import { database, type MemoryFragment, type UnlockHistory } from '../database/database'
 
 export interface MemoryUnlockCondition {
-  type: 'conversation_count' | 'emotion' | 'keyword' | 'time' | 'personality_switch' | 'complex'
+  type: 'conversation_count' | 'emotion' | 'keyword' | 'time' | 'time_based' | 'personality_switch' | 'complex'
   value: any
   threshold?: number
 }
@@ -44,22 +44,42 @@ class MemoryService {
       const sessionStats = await this.getSessionStats(sessionId)
 
       for (const fragment of lockedFragments) {
-        let unlockConditions: MemoryUnlockCondition[] = []
+        let unlockConditions: any = {}
         
         try {
-          const parsed = JSON.parse(fragment.unlock_conditions || '[]')
-          unlockConditions = Array.isArray(parsed) ? parsed : []
+          const parsed = JSON.parse(fragment.unlock_conditions || '{}')
+          unlockConditions = parsed
         } catch (error) {
           console.error(`Invalid unlock_conditions for fragment ${fragment.id}:`, error)
           continue
         }
         
-        if (unlockConditions.length > 0 && await this.checkUnlockConditions(unlockConditions, {
-          content,
-          emotion,
-          sessionId,
-          sessionStats
-        })) {
+        let conditionsMet = false
+        
+        // 检查是否是旧的单一条件格式 (有type字段)
+        if (unlockConditions.type) {
+          conditionsMet = await this.checkSingleCondition({
+            type: unlockConditions.type,
+            value: unlockConditions.value,
+            threshold: unlockConditions.threshold
+          }, {
+            content,
+            emotion,
+            sessionId,
+            sessionStats
+          })
+        } 
+        // 检查是否是新的对象格式 (直接包含条件属性)
+        else if (Object.keys(unlockConditions).length > 0) {
+          conditionsMet = await this.checkObjectUnlockConditions(unlockConditions, {
+            content,
+            emotion,
+            sessionId,
+            sessionStats
+          })
+        }
+        
+        if (conditionsMet) {
           // 解锁记忆片段
           await this.unlockMemoryFragment(fragment.id, sessionId, 'auto', '条件满足')
           newUnlocks.push(fragment)
@@ -104,6 +124,154 @@ class MemoryService {
     return true
   }
 
+  // 检查对象格式的解锁条件
+  private async checkObjectUnlockConditions(
+    conditions: any,
+    context: {
+      content: string
+      emotion: any
+      sessionId: string
+      sessionStats: any
+    }
+  ): Promise<boolean> {
+    // 检查对话次数条件
+    if (conditions.conversation_count !== undefined) {
+      const conversationCount = context.sessionStats.messageCount || 0
+      if (conversationCount < conditions.conversation_count) {
+        return false
+      }
+    }
+
+    // 检查选择次数条件
+    if (conditions.choice_count !== undefined) {
+      const choiceCount = context.sessionStats.choiceCount || 0
+      if (choiceCount < conditions.choice_count) {
+        return false
+      }
+    }
+
+    // 检查恶魔好感度条件
+    if (conditions.demon_affinity !== undefined) {
+      const demonAffinity = context.sessionStats.demonAffinity || 0
+      if (demonAffinity < conditions.demon_affinity) {
+        return false
+      }
+    }
+
+    // 检查天使好感度条件
+    if (conditions.angel_affinity !== undefined) {
+      const angelAffinity = context.sessionStats.angelAffinity || 0
+      if (angelAffinity < conditions.angel_affinity) {
+        return false
+      }
+    }
+
+    // 检查堕落值条件
+    if (conditions.corruption_value !== undefined) {
+      const corruptionValue = context.sessionStats.corruptionValue || 0
+      if (corruptionValue < conditions.corruption_value) {
+        return false
+      }
+    }
+
+    // 检查纯洁值条件
+    if (conditions.purity_value !== undefined) {
+      const purityValue = context.sessionStats.purityValue || 0
+      if (purityValue < conditions.purity_value) {
+        return false
+      }
+    }
+
+    // 检查恶魔选择次数条件
+    if (conditions.demon_choices !== undefined) {
+      const demonChoices = context.sessionStats.demonChoices || 0
+      if (demonChoices < conditions.demon_choices) {
+        return false
+      }
+    }
+
+    // 检查天使选择次数条件
+    if (conditions.angel_choices !== undefined) {
+      const angelChoices = context.sessionStats.angelChoices || 0
+      if (angelChoices < conditions.angel_choices) {
+        return false
+      }
+    }
+
+    // 检查特定选择条件
+    if (conditions.specific_choices && Array.isArray(conditions.specific_choices)) {
+      const userChoices = context.sessionStats.userChoices || []
+      for (const requiredChoice of conditions.specific_choices) {
+        if (!userChoices.includes(requiredChoice)) {
+          return false
+        }
+      }
+    }
+
+    // 检查游戏时长条件
+    if (conditions.time_played !== undefined) {
+      const timePlayed = context.sessionStats.timePlayed || 0
+      if (timePlayed < conditions.time_played) {
+        return false
+      }
+    }
+
+    // 检查情感条件
+    if (conditions.emotion) {
+      const emotionType = conditions.emotion.type
+      const threshold = conditions.emotion.threshold || 0.5
+      
+      if (context.emotion && context.emotion[emotionType]) {
+        if (context.emotion[emotionType] < threshold) {
+          return false
+        }
+      } else {
+        return false
+      }
+    }
+
+    // 检查关键词条件
+    if (conditions.keywords && Array.isArray(conditions.keywords)) {
+      const content = context.content.toLowerCase()
+      let keywordFound = false
+      for (const keyword of conditions.keywords) {
+        if (content.includes(keyword.toLowerCase())) {
+          keywordFound = true
+          break
+        }
+      }
+      if (!keywordFound) {
+        return false
+      }
+    }
+
+    // 检查时间条件
+    if (conditions.time_of_day) {
+      const now = new Date()
+      const currentHour = now.getHours()
+      const timeRange = conditions.time_of_day.split('-')
+      
+      if (timeRange.length === 2) {
+        const startHour = parseInt(timeRange[0])
+        const endHour = parseInt(timeRange[1])
+        
+        if (startHour <= endHour) {
+          // 正常时间范围，如 9-17
+          if (currentHour < startHour || currentHour > endHour) {
+            return false
+          }
+        } else {
+          // 跨夜时间范围，如 22-6
+          if (currentHour < startHour && currentHour > endHour) {
+            return false
+          }
+        }
+      }
+    }
+
+    return true
+  }
+
   // 检查单个条件
   private async checkSingleCondition(
     condition: MemoryUnlockCondition,
@@ -120,6 +288,12 @@ class MemoryService {
 
       case 'emotion':
         if (!context.emotion) return false
+        // 处理字符串格式的情绪值 (如 'positive')
+        if (typeof condition.value === 'string') {
+          return context.emotion.type === condition.value && 
+                 (condition.threshold ? context.emotion.intensity >= condition.threshold : true)
+        }
+        // 处理对象格式的情绪值
         if (condition.value.type && context.emotion.type !== condition.value.type) return false
         if (condition.threshold && context.emotion.intensity < condition.threshold) return false
         return true
@@ -131,6 +305,7 @@ class MemoryService {
         )
 
       case 'time':
+      case 'time_based':
         return this.checkTimeCondition(condition.value)
 
       case 'personality_switch':
@@ -201,23 +376,85 @@ class MemoryService {
   // 获取会话统计信息
   private async getSessionStats(sessionId: string): Promise<any> {
     try {
+      // 获取消息数量
       const messageCountQuery = this.db.prepare(`
         SELECT COUNT(*) as count FROM chat_messages WHERE session_id = ?
       `)
       const messageCount = messageCountQuery.get(sessionId) as { count: number }
 
+      // 获取会话信息
       const sessionQuery = this.db.prepare(`
         SELECT * FROM chat_sessions WHERE id = ?
       `)
       const session = sessionQuery.get(sessionId)
 
+      // 获取人格切换次数
+      const personalitySwitchQuery = this.db.prepare(`
+        SELECT COUNT(*) as count FROM personality_switches WHERE session_id = ?
+      `)
+      const personalitySwitchCount = personalitySwitchQuery.get(sessionId) as { count: number }
+
+      // 获取情绪分析数据
+      const emotionQuery = this.db.prepare(`
+        SELECT emotion_type, AVG(intensity) as avg_intensity 
+        FROM emotion_analysis 
+        WHERE session_id = ? 
+        GROUP BY emotion_type
+      `)
+      const emotions = emotionQuery.all(sessionId) as Array<{ emotion_type: string, avg_intensity: number }>
+
+      // 计算会话时长（从第一条消息到最后一条消息的时间差，单位：分钟）
+      const timeQuery = this.db.prepare(`
+        SELECT 
+          MIN(timestamp) as first_message,
+          MAX(timestamp) as last_message
+        FROM chat_messages 
+        WHERE session_id = ?
+      `)
+      const timeData = timeQuery.get(sessionId) as { first_message: string, last_message: string }
+      
+      let timePlayed = 0
+      if (timeData.first_message && timeData.last_message) {
+        const firstTime = new Date(timeData.first_message).getTime()
+        const lastTime = new Date(timeData.last_message).getTime()
+        timePlayed = Math.floor((lastTime - firstTime) / (1000 * 60)) // 转换为分钟
+      }
+
       return {
         messageCount: messageCount.count,
+        choiceCount: 0, // 暂时设为0，需要根据实际选择系统实现
+        demonAffinity: 0, // 暂时设为0，需要根据实际好感度系统实现
+        angelAffinity: 0, // 暂时设为0，需要根据实际好感度系统实现
+        corruptionValue: 0, // 暂时设为0，需要根据实际堕落值系统实现
+        purityValue: 0, // 暂时设为0，需要根据实际纯洁值系统实现
+        demonChoices: 0, // 暂时设为0，需要根据实际选择系统实现
+        angelChoices: 0, // 暂时设为0，需要根据实际选择系统实现
+        userChoices: [], // 暂时设为空数组，需要根据实际选择系统实现
+        timePlayed: timePlayed,
+        personalitySwitchCount: personalitySwitchCount.count,
+        emotions: emotions.reduce((acc, emotion) => {
+          acc[emotion.emotion_type] = emotion.avg_intensity
+          return acc
+        }, {} as Record<string, number>),
         session
       }
     } catch (error) {
       console.error('Error getting session stats:', error)
-      return { messageCount: 0, session: null }
+      return { 
+        messageCount: 0, 
+        choiceCount: 0,
+        demonAffinity: 0,
+        angelAffinity: 0,
+        corruptionValue: 0,
+        purityValue: 0,
+        demonChoices: 0,
+        angelChoices: 0,
+        userChoices: [],
+        timePlayed: 0,
+        personalitySwitchCount: 0,
+        emotions: {},
+        session: null 
+      }
     }
   }
 

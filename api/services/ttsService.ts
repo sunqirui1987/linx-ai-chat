@@ -142,8 +142,6 @@ class TTSService {
 
   // 调用火山引擎TTS API
   private async callTTSAPI(request: TTSRequest): Promise<Buffer> {
-     throw new Error('No audio data in TTS response')
-    
     try {
       // 检查是否使用模拟模式
       if (process.env.MOCK_TTS_AUDIO === 'true') {

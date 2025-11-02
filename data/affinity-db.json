@@ -3,20 +3,316 @@
     {
       "id": 1,
       "user_id": 1,
-      "demon_affinity": 50,
-      "angel_affinity": 50,
-      "corruption_value": 50,
-      "purity_value": 50,
-      "total_choices": 0,
+      "demon_affinity": 64,
+      "angel_affinity": 100,
+      "corruption_value": 38,
+      "purity_value": 87,
+      "total_choices": 21,
       "demon_choices": 0,
-      "angel_choices": 0,
-      "updated_at": "2025-10-30T07:40:05.535Z",
-      "created_at": "2025-10-30T07:40:05.535Z"
+      "angel_choices": 4,
+      "updated_at": "2025-11-02T03:27:37.369Z",
+      "created_at": "2025-10-30T07:40:05.535Z",
+      "last_choice_type": "neutral"
     }
   ],
-  "affinity_choices": [],
+  "affinity_choices": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "session_id": null,
+      "choice_type": "neutral",
+      "choice_content": "我明白了",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-10-30T14:53:47.465Z"
+    },
+    {
+      "id": 2,
+      "user_id": 1,
+      "session_id": "session_1761835512445_31emg9tlw",
+      "choice_type": "angel",
+      "choice_content": "你好，我想和你聊聊我最近的想法",
+      "affinity_change": {
+        "demon_affinity": -5,
+        "angel_affinity": 4,
+        "corruption_value": -3,
+        "purity_value": 5
+      },
+      "created_at": "2025-10-31T01:28:38.912Z"
+    },
+    {
+      "id": 3,
+      "user_id": 1,
+      "session_id": "session_1761874187245_b9hkix2fh",
+      "choice_type": "angel",
+      "choice_content": "你好，我想和你聊聊我最近的想法",
+      "affinity_change": {
+        "demon_affinity": -5,
+        "angel_affinity": 4,
+        "corruption_value": -3,
+        "purity_value": 5
+      },
+      "created_at": "2025-10-31T01:30:07.989Z"
+    },
+    {
+      "id": 4,
+      "user_id": 1,
+      "session_id": "session_1761874238582_dq9phm5fh",
+      "choice_type": "angel",
+      "choice_content": "你好，我想和你聊聊我最近的想法",
+      "affinity_change": {
+        "demon_affinity": -5,
+        "angel_affinity": 5,
+        "corruption_value": -3,
+        "purity_value": 5
+      },
+      "created_at": "2025-10-31T01:31:39.303Z"
+    },
+    {
+      "id": 5,
+      "user_id": 1,
+      "session_id": null,
+      "choice_type": "angel",
+      "choice_content": "你好，我想和你聊聊我最近的想法",
+      "affinity_change": {
+        "demon_affinity": -5,
+        "angel_affinity": 5,
+        "corruption_value": -3,
+        "purity_value": 5
+      },
+      "created_at": "2025-10-31T01:52:32.666Z"
+    },
+    {
+      "id": 6,
+      "user_id": 1,
+      "session_id": null,
+      "choice_type": "neutral",
+      "choice_content": "你是恶魔",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-10-31T02:16:00.724Z"
+    },
+    {
+      "id": 7,
+      "user_id": 1,
+      "session_id": null,
+      "choice_type": "neutral",
+      "choice_content": "继续说",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-10-31T02:20:43.329Z"
+    },
+    {
+      "id": 8,
+      "user_id": 1,
+      "session_id": null,
+      "choice_type": "neutral",
+      "choice_content": "继续说",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-10-31T02:20:44.230Z"
+    },
+    {
+      "id": 9,
+      "user_id": 1,
+      "session_id": null,
+      "choice_type": "neutral",
+      "choice_content": "继续对话",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-10-31T02:20:52.370Z"
+    },
+    {
+      "id": 10,
+      "user_id": 1,
+      "session_id": null,
+      "choice_type": "neutral",
+      "choice_content": "继续说",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-10-31T10:08:22.006Z"
+    },
+    {
+      "id": 11,
+      "user_id": 1,
+      "session_id": null,
+      "choice_type": "neutral",
+      "choice_content": "继续说",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-10-31T10:08:33.119Z"
+    },
+    {
+      "id": 12,
+      "user_id": 1,
+      "session_id": "session_1761924783485_1vndd6nvt",
+      "choice_type": "neutral",
+      "choice_content": "我今天心情很糟糕，感觉一切都不顺利",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-10-31T15:33:11.321Z"
+    },
+    {
+      "id": 13,
+      "user_id": 1,
+      "session_id": "session_1761924783485_1vndd6nvt",
+      "choice_type": "neutral",
+      "choice_content": "我想了解更多关于这个世界的秘密",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-10-31T15:33:21.212Z"
+    },
+    {
+      "id": 14,
+      "user_id": 1,
+      "session_id": "session_1761924783485_1vndd6nvt",
+      "choice_type": "neutral",
+      "choice_content": "我觉得应该做一些善良的事情帮助别人",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-10-31T15:33:31.084Z"
+    },
+    {
+      "id": 15,
+      "user_id": 1,
+      "session_id": "session_1761924783485_1vndd6nvt",
+      "choice_type": "neutral",
+      "choice_content": "有时候我觉得报复那些伤害我的人是对的",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-10-31T16:07:06.119Z"
+    },
+    {
+      "id": 16,
+      "user_id": 1,
+      "session_id": "session_1761924783485_1vndd6nvt",
+      "choice_type": "neutral",
+      "choice_content": "我明白了",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-11-02T03:22:15.752Z"
+    },
+    {
+      "id": 17,
+      "user_id": 1,
+      "session_id": "session_1761924783485_1vndd6nvt",
+      "choice_type": "neutral",
+      "choice_content": "我有不同看法",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-11-02T03:22:28.670Z"
+    },
+    {
+      "id": 18,
+      "user_id": 1,
+      "session_id": "session_1761924783485_1vndd6nvt",
+      "choice_type": "neutral",
+      "choice_content": "告诉我更多",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-11-02T03:22:53.311Z"
+    },
+    {
+      "id": 19,
+      "user_id": 1,
+      "session_id": "session_1761924783485_1vndd6nvt",
+      "choice_type": "neutral",
+      "choice_content": "告诉我更多",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-11-02T03:24:12.311Z"
+    },
+    {
+      "id": 20,
+      "user_id": 1,
+      "session_id": "session_1761924783485_1vndd6nvt",
+      "choice_type": "neutral",
+      "choice_content": "告诉我更多",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-11-02T03:25:15.914Z"
+    },
+    {
+      "id": 21,
+      "user_id": 1,
+      "session_id": "session_1762054030681_au4zoim0j",
+      "choice_type": "neutral",
+      "choice_content": "你好",
+      "affinity_change": {
+        "demon_affinity": 2,
+        "angel_affinity": 2,
+        "corruption_value": 0,
+        "purity_value": 1
+      },
+      "created_at": "2025-11-02T03:27:37.369Z"
+    }
+  ],
   "counters": {
     "affinity": 1,
-    "affinity_choices": 0
+    "affinity_choices": 21
   }
 }

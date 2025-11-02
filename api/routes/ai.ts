@@ -48,57 +48,6 @@ router.post('/generate',
 )
 
 /**
- * 流式生成AI回应
- * POST /api/ai/generate/stream
- */
-router.post('/generate/stream',
-  validateBody([
-    { field: 'content', required: true, type: 'string', minLength: 1 },
-    { field: 'personality', required: false, type: 'string' },
-    { field: 'emotion', required: false, type: 'object' },
-    { field: 'history', required: false, type: 'array' },
-    { field: 'memoryFragments', required: false, type: 'array' }
-  ]),
-  asyncHandler(async (req, res) => {
-    const { 
-      content, 
-      personality = 'angel',
-      emotion = { type: 'neutral', intensity: 0.5 },
-      history = [],
-      memoryFragments = []
-    } = req.body
-
-    // 设置SSE头
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Cache-Control'
-    })
-
-    try {
-       await aiService.generateStreamResponse({
-         content: content.trim(),
-         personality,
-         emotion,
-         history,
-         memoryFragments,
-         onChunk: (chunk: string) => {
-           res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`)
-         }
-       })
-
-       res.write('data: [DONE]\n\n')
-       res.end()
-     } catch (error) {
-       res.write(`data: ${JSON.stringify({ error: 'Stream generation failed' })}\n\n`)
-       res.end()
-     }
-  })
-)
-
-/**
  * 获取建议回复
  * POST /api/ai/suggestions
  */

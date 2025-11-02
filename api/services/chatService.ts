@@ -5,6 +5,7 @@ import { memoryService } from './memoryService'
 import { ttsService } from './ttsService'
 import { aiService } from './aiService'
 import { affinityService } from './affinityService'
+import { contentAnalysisService } from './contentAnalysisService'
 
 export interface CreateSessionRequest {
   personality?: string
@@ -178,69 +179,6 @@ class ChatService {
     updateSession.run(message.content, message.timestamp, now, sessionId)
   }
 
-  // 分析用户消息的选择类型（天使、恶魔或中性）
-  private analyzeChoiceType(content: string, emotion: any): 'angel' | 'demon' | 'neutral' {
-    const lowerContent = content.toLowerCase()
-    
-    // 恶魔倾向关键词
-    const demonKeywords = [
-      '报复', '仇恨', '愤怒', '破坏', '伤害', '欺骗', '背叛', '诱惑', '堕落', '黑暗',
-      '复仇', '恶意', '残忍', '冷酷', '自私', '贪婪', '嫉妒', '傲慢', '暴力', '邪恶',
-      '操控', '利用', '欺压', '威胁', '恐吓', '折磨', '痛苦', '绝望', '毁灭', '腐败'
-    ]
-    
-    // 天使倾向关键词
-    const angelKeywords = [
-      '宽恕', '原谅', '理解', '帮助', '关爱', '善良', '温柔', '慈悲', '救赎', '光明',
-      '希望', '治愈', '安慰', '支持', '鼓励', '保护', '奉献', '牺牲', '无私', '纯洁',
-      '正义', '诚实', '真诚', '友善', '包容', '耐心', '谦逊', '感恩', '祝福', '和平'
-    ]
-    
-    let demonScore = 0
-    let angelScore = 0
-    
-    // 检查关键词
-    demonKeywords.forEach(keyword => {
-      if (lowerContent.includes(keyword)) {
-        demonScore += 1
-      }
-    })
-    
-    angelKeywords.forEach(keyword => {
-      if (lowerContent.includes(keyword)) {
-        angelScore += 1
-      }
-    })
-    
-    // 基于情绪分析结果调整分数
-    if (emotion) {
-      const emotionType = typeof emotion === 'string' ? emotion : emotion.type || emotion.primary
-      
-      if (emotionType) {
-        const emotionLower = emotionType.toLowerCase()
-        
-        // 负面情绪倾向恶魔
-        if (['anger', 'hatred', 'rage', 'fury', 'contempt', 'disgust', 'envy', 'jealousy'].includes(emotionLower)) {
-          demonScore += 2
-        }
-        
-        // 正面情绪倾向天使
-        if (['love', 'compassion', 'kindness', 'joy', 'peace', 'hope', 'gratitude', 'forgiveness'].includes(emotionLower)) {
-          angelScore += 2
-        }
-      }
-    }
-    
-    // 判断选择类型
-    if (demonScore > angelScore && demonScore > 0) {
-      return 'demon'
-    } else if (angelScore > demonScore && angelScore > 0) {
-      return 'angel'
-    } else {
-      return 'neutral'
-    }
-  }
-
   // 生成AI回应
   async generateResponse(request: GenerateResponseRequest): Promise<ChatResponse> {
     try {
@@ -261,20 +199,48 @@ class ChatService {
       // 获取会话历史
       const history = await this.getSessionMessages(request.sessionId, 20)
 
-      // 检查记忆解锁
-      const memoryResult = await memoryService.checkMemoryUnlock(
-        request.content,
-        request.emotion,
-        request.sessionId
-      )
+      // 🔥 使用统一的内容分析服务进行全面分析
+      console.log(`[ChatService] 开始统一内容分析...`)
+      const analysisResult = await contentAnalysisService.analyzeContent({
+        content: request.content,
+        sessionId: request.sessionId,
+        currentPersonality: request.personality,
+        conversationHistory: history,
+        userId: 1 // TODO: 从认证信息中获取真实的用户ID
+      })
+
+      console.log(`[ChatService] 分析结果:`, JSON.stringify(analysisResult, null, 2))
+
+      // 根据分析结果确定最终人格
+      const finalPersonality = analysisResult.personalityAnalysis.shouldSwitch 
+        ? analysisResult.personalityAnalysis.newPersonality || request.personality
+        : request.personality
+
+      // 执行记忆解锁
+      const unlockedMemories = []
+      for (const memoryId of analysisResult.memoryAnalysis.unlockCandidates) {
+        const unlocked = await memoryService.unlockMemoryFragment(
+          memoryId,
+          request.sessionId,
+          'auto',
+          `LLM分析触发: ${analysisResult.memoryAnalysis.triggeredKeywords.join(', ')}`
+        )
+        if (unlocked) {
+          const memory = await memoryService.getMemoryFragment(memoryId)
+          if (memory) unlockedMemories.push(memory)
+        }
+      }
+
+      // 获取可用的记忆片段
+      const availableMemories = await memoryService.getUnlockedMemories(request.sessionId)
 
       // 生成AI回应
       const aiResponse = await aiService.generateResponse({
         content: request.content,
-        personality: request.personality,
-        emotion: request.emotion,
+        personality: finalPersonality,
+        emotion: analysisResult.emotion,
         history: history,
-        memoryFragments: memoryResult.availableMemories
+        memoryFragments: availableMemories
       })
 
       // 生成语音（如果需要）
@@ -283,7 +249,7 @@ class ChatService {
         try {
           const ttsResponse = await ttsService.generateSpeech(
             aiResponse.content,
-            request.personality
+            finalPersonality
           )
           audioUrl = ttsResponse.audioUrl
         } catch (error) {
@@ -298,10 +264,10 @@ class ChatService {
         session_id: request.sessionId,
         content: aiResponse.content,
         role: 'assistant',
-        personality: request.personality,
-        emotion: JSON.stringify(request.emotion),
+        personality: finalPersonality,
+        emotion: JSON.stringify(analysisResult.emotion),
         audio_url: audioUrl,
-        memory_triggered: JSON.stringify(memoryResult.newUnlocks.map(m => m.id)),
+        memory_triggered: JSON.stringify(unlockedMemories.map(m => m.id)),
         timestamp: new Date().toISOString()
       }
 
@@ -310,17 +276,35 @@ class ChatService {
       // 记录情绪分析
       await emotionService.saveEmotionAnalysis({
         sessionId: request.sessionId,
-        messageId: userMessageId,
-        emotion: request.emotion
+        text: request.content,
+        emotion: analysisResult.emotion.type,
+        confidence: analysisResult.emotion.intensity,
+        context: analysisResult.emotion.description
       })
+
+      // 记录好感度（使用统一分析的结果）
+      try {
+        const userId = 1 // TODO: 从认证信息中获取真实的用户ID
+        
+        await affinityService.recordChoice(userId, {
+          choice_type: analysisResult.affinityAnalysis.choiceType,
+          choice_content: request.content,
+          session_id: request.sessionId
+        })
+        
+        console.log(`[ChatService] 记录好感度选择: ${analysisResult.affinityAnalysis.choiceType} (${analysisResult.affinityAnalysis.reasoning})`)
+      } catch (error) {
+        console.error('Failed to record affinity choice:', error)
+        // 不影响主要流程，继续执行
+      }
 
       return {
         content: aiResponse.content,
-        personality: request.personality,
-        emotion: request.emotion,
+        personality: finalPersonality,
+        emotion: analysisResult.emotion,
         audioUrl,
         suggestions: aiResponse.suggestions,
-        memoryUnlocked: memoryResult.newUnlocks
+        memoryUnlocked: unlockedMemories
       }
 
     } catch (error) {
@@ -344,100 +328,6 @@ class ChatService {
       await this.saveMessage(aiMessage)
 
       return fallbackResponse
-    }
-  }
-
-  // 流式生成回应
-  async generateStreamResponse(request: GenerateStreamRequest): Promise<void> {
-    try {
-      // 保存用户消息
-      const userMessageId = `msg_${Date.now()}_user`
-      const userMessage: Omit<ChatMessage, 'created_at'> = {
-        id: userMessageId,
-        session_id: request.sessionId,
-        content: request.content,
-        role: 'user',
-        timestamp: new Date().toISOString(),
-        emotion: JSON.stringify(request.emotion),
-        memory_triggered: '[]'
-      }
-
-      await this.saveMessage(userMessage)
-
-      // 获取会话历史
-      const history = await this.getSessionMessages(request.sessionId, 20)
-
-      // 检查记忆解锁
-      const memoryResult = await memoryService.checkMemoryUnlock(
-        request.content,
-        request.emotion,
-        request.sessionId
-      )
-
-      // 流式生成AI回应
-      let fullContent = ''
-      await aiService.generateStreamResponse({
-        content: request.content,
-        personality: request.personality,
-        emotion: request.emotion,
-        history: history,
-        memoryFragments: memoryResult.availableMemories,
-        onChunk: (chunk: string) => {
-          fullContent += chunk
-          request.onChunk?.(chunk)
-        }
-      })
-
-      // 生成语音（如果需要）
-      let audioUrl: string | undefined
-      if (request.enableTTS) {
-        try {
-          const ttsResponse = await ttsService.generateSpeech(
-            fullContent,
-            request.personality
-          )
-          audioUrl = ttsResponse.audioUrl
-        } catch (error) {
-          console.error('TTS generation failed:', error)
-        }
-      }
-
-      // 保存AI消息
-      const aiMessageId = `msg_${Date.now()}_ai`
-      const aiMessage: Omit<ChatMessage, 'created_at'> = {
-        id: aiMessageId,
-        session_id: request.sessionId,
-        content: fullContent,
-        role: 'assistant',
-        personality: request.personality,
-        emotion: JSON.stringify(request.emotion),
-        audio_url: audioUrl,
-        memory_triggered: JSON.stringify(memoryResult.newUnlocks.map(m => m.id)),
-        timestamp: new Date().toISOString()
-      }
-
-      await this.saveMessage(aiMessage)
-
-      // 生成建议
-      const suggestions = await aiService.generateSuggestions(fullContent, request.personality)
-
-      const response: ChatResponse = {
-        content: fullContent,
-        personality: request.personality,
-        emotion: request.emotion,
-        audioUrl,
-        suggestions,
-        memoryUnlocked: memoryResult.newUnlocks
-      }
-
-      request.onComplete?.(response)
-
-    } catch (error) {
-      console.error('Error generating stream response:', error)
-      
-      const fallbackResponse = this.getFallbackResponse(request.personality)
-      request.onChunk?.(fallbackResponse.content)
-      request.onComplete?.(fallbackResponse)
     }
   }
 

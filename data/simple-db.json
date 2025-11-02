@@ -13,6 +13,13 @@
       "password": "e4d2f949a401c04e9cd0bd410e31d6f81b413974151fc458c18d2d186c379219",
       "created_at": "2025-10-30T07:35:39.733Z",
       "updated_at": "2025-10-30T07:35:39.733Z"
+    },
+    {
+      "id": 1,
+      "username": "testuser2",
+      "password": "1a4d0768f7070592f65e93a00db1e501bcb2e0ed5325c02ff68e057ede79b4b6",
+      "created_at": "2025-10-30T15:01:20.150Z",
+      "updated_at": "2025-10-30T15:01:20.150Z"
     }
   ],
   "chat_sessions": [],

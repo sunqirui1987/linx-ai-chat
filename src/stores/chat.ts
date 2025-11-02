@@ -70,7 +70,10 @@ export const useChatStore = defineStore('chat', {
     },
     
     currentMessages: (state) => {
-      return state.messages.filter(m => !m.isTyping)
+      return state.messages.filter(m => 
+        !m.isTyping && 
+        String(m.session_id) === state.currentSessionId
+      )
     },
     
     lastMessage: (state) => {
@@ -200,12 +203,24 @@ export const useChatStore = defineStore('chat', {
       try {
         const response = await apiClient.get(`/chat/sessions/${sessionId}/messages`)
         
+        console.log(`[ChatStore] 加载消息 - sessionId: ${sessionId}`)
+        console.log(`[ChatStore] API响应:`, response.data)
+        
         if (response.data.success) {
           const sessionMessages = response.data.data.messages || []
           
+          console.log(`[ChatStore] 接收到消息数量: ${sessionMessages.length}`)
+          if (sessionMessages.length > 0) {
+            console.log(`[ChatStore] 第一条消息示例:`, sessionMessages[0])
+            console.log(`[ChatStore] 消息session_id类型:`, typeof sessionMessages[0].session_id)
+            console.log(`[ChatStore] 当前sessionId类型:`, typeof sessionId)
+          }
+          
           // 更新messages数组，移除旧的会话消息并添加新的
-          this.messages = this.messages.filter(m => m.session_id !== sessionId)
+          this.messages = this.messages.filter(m => String(m.session_id) !== sessionId)
           this.messages.push(...sessionMessages)
+          
+          console.log(`[ChatStore] 过滤后的当前消息数量:`, this.currentMessages.length)
           
           // 按时间排序
           this.messages.sort((a, b) => 
@@ -253,7 +268,7 @@ export const useChatStore = defineStore('chat', {
         if (response.data.success) {
           // 从本地状态中移除会话
           this.sessions = this.sessions.filter(s => s.id !== sessionId)
-          this.messages = this.messages.filter(m => m.session_id !== sessionId)
+          this.messages = this.messages.filter(m => String(m.session_id) !== sessionId)
           
           // 如果删除的是当前会话，选择另一个会话
           if (this.currentSessionId === sessionId) {
@@ -277,7 +292,7 @@ export const useChatStore = defineStore('chat', {
         if (error.response?.status === 404) {
           console.log(`会话 ${sessionId} 在后端不存在，从本地状态中移除`)
           this.sessions = this.sessions.filter(s => s.id !== sessionId)
-          this.messages = this.messages.filter(m => m.session_id !== sessionId)
+          this.messages = this.messages.filter(m => String(m.session_id) !== sessionId)
           
           // 如果删除的是当前会话，选择另一个会话
           if (this.currentSessionId === sessionId) {
@@ -389,7 +404,7 @@ export const useChatStore = defineStore('chat', {
         
         if (response.data.success) {
           // 清除本地消息
-          this.messages = this.messages.filter(m => m.session_id !== this.currentSessionId)
+          this.messages = this.messages.filter(m => String(m.session_id) !== this.currentSessionId)
           
           // 重置人格
           this.currentPersonality = 'angel'

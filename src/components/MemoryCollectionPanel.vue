@@ -79,10 +79,10 @@
                 v-for="i in getRarityStars(memory.rarity)"
                 :key="i"
                 class="h-3 w-3"
-                :class="memory.unlocked ? 'text-yellow-400' : 'text-gray-500'"
+                :class="(memory.is_unlocked || memory.unlocked) ? 'text-yellow-400' : 'text-gray-500'"
               />
             </div>
-            <div v-if="memory.unlocked" class="text-xs text-green-400 font-medium">
+            <div v-if="memory.is_unlocked || memory.unlocked" class="text-xs text-green-400 font-medium">
               已解锁
             </div>
           </div>
@@ -90,11 +90,11 @@
           <!-- 卡片图标 -->
           <div class="flex justify-center">
             <div class="w-12 h-12 rounded-full flex items-center justify-center"
-                 :class="memory.unlocked ? getIconStyle(memory) : 'bg-gray-700'">
+                 :class="(memory.is_unlocked || memory.unlocked) ? getIconStyle(memory) : 'bg-gray-700'">
               <component 
                 :is="getMemoryIcon(memory)" 
                 class="h-6 w-6"
-                :class="memory.unlocked ? 'text-white' : 'text-gray-500'"
+                :class="(memory.is_unlocked || memory.unlocked) ? 'text-white' : 'text-gray-500'"
               />
             </div>
           </div>
@@ -102,8 +102,8 @@
           <!-- 卡片标题 -->
           <div class="text-center">
             <div class="text-sm font-medium"
-                 :class="memory.unlocked ? 'text-white' : 'text-gray-500'">
-              {{ memory.unlocked ? memory.title : '???' }}
+                 :class="(memory.is_unlocked || memory.unlocked) ? 'text-white' : 'text-gray-500'">
+              {{ (memory.is_unlocked || memory.unlocked) ? memory.title : '???' }}
             </div>
           </div>
         </div>
@@ -158,7 +158,7 @@
           </div>
 
           <!-- 内容 -->
-          <div v-if="selectedMemory.unlocked">
+          <div v-if="selectedMemory.is_unlocked || selectedMemory.unlocked">
             <div class="text-gray-400 mb-2">记忆内容:</div>
             <div class="bg-gray-700/50 rounded-lg p-3 text-gray-200 text-sm leading-relaxed">
               {{ selectedMemory.content }}
@@ -174,10 +174,10 @@
           </div>
 
           <!-- 解锁时间 -->
-          <div v-if="selectedMemory.unlocked && selectedMemory.unlockedAt">
+          <div v-if="(selectedMemory.is_unlocked || selectedMemory.unlocked) && (selectedMemory.unlocked_at || selectedMemory.unlockedAt)">
             <div class="text-gray-400 mb-1">解锁时间:</div>
             <div class="text-gray-300 text-sm">
-              {{ formatUnlockTime(selectedMemory.unlockedAt) }}
+              {{ formatUnlockTime(selectedMemory.unlocked_at ? new Date(selectedMemory.unlocked_at) : selectedMemory.unlockedAt) }}
             </div>
           </div>
         </div>
@@ -195,15 +195,19 @@ import {
 
 interface MemoryFragment {
   id: string
-  fragmentId: string
-  category: string
   title: string
   content: string
-  description: string
-  rarity: 'common' | 'rare' | 'epic' | 'legendary'
-  unlocked: boolean
-  unlockedAt?: Date
+  category: string
+  rarity: 'common' | 'rare' | 'legendary'
+  is_unlocked: boolean
+  unlocked_at?: string
+  unlock_conditions?: any
+  emotional_value?: number
+  tags?: string[]
   justUnlocked?: boolean
+  // 兼容性字段
+  unlocked?: boolean
+  unlockedAt?: Date
 }
 
 interface Category {
@@ -232,7 +236,7 @@ const categories: Category[] = [
 ]
 
 const totalCount = computed(() => props.memories.length)
-const unlockedCount = computed(() => props.memories.filter(m => m.unlocked).length)
+const unlockedCount = computed(() => props.memories.filter(m => m.is_unlocked || m.unlocked).length)
 const completionPercentage = computed(() => 
   totalCount.value > 0 ? Math.round((unlockedCount.value / totalCount.value) * 100) : 0
 )
@@ -246,7 +250,7 @@ const filteredMemories = computed(() => {
 
 const getCategoryCount = (categoryId: string) => {
   if (categoryId === 'all') return unlockedCount.value
-  return props.memories.filter(m => m.category === categoryId && m.unlocked).length
+  return props.memories.filter(m => m.category === categoryId && (m.is_unlocked || m.unlocked)).length
 }
 
 const getCategoryName = (categoryId: string) => {
@@ -265,7 +269,7 @@ const getRarityStars = (rarity: string) => {
 }
 
 const getCardStyle = (memory: MemoryFragment) => {
-  if (!memory.unlocked) {
+  if (!memory.is_unlocked && !memory.unlocked) {
     return 'bg-gray-800 border border-gray-600 opacity-60'
   }
   
@@ -280,7 +284,7 @@ const getCardStyle = (memory: MemoryFragment) => {
 }
 
 const getCardGradient = (memory: MemoryFragment) => {
-  if (!memory.unlocked) return 'from-gray-600 to-gray-700'
+  if (!memory.is_unlocked && !memory.unlocked) return 'from-gray-600 to-gray-700'
   
   const gradients = {
     'common': 'from-gray-500 to-gray-600',

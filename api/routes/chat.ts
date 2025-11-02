@@ -78,7 +78,13 @@ router.get('/sessions/:sessionId/messages',
       parseInt(limit as string)
     )
 
-    ResponseUtil.success(res, messages)
+    console.log(`[ChatRoute] 获取会话消息 - sessionId: ${sessionId}`)
+    console.log(`[ChatRoute] 消息数量: ${messages.length}`)
+    if (messages.length > 0) {
+      console.log(`[ChatRoute] 第一条消息示例:`, JSON.stringify(messages[0], null, 2))
+    }
+
+    ResponseUtil.success(res, { messages })
   })
 )
 

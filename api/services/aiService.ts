@@ -39,9 +39,9 @@ export interface AIConfig {
 
 class AIService {
   private config: AIConfig = {
-    apiKey: process.env.QNAI_API_KEY || 'sk-39460fc22bad8b0c0900f65a94f959d70919a2c2a03d4dab5f27d0bf94a15c98',
+    apiKey: process.env.QNAI_API_KEY || 'sk-ed3019390280295126a80f5763c00da42484fda4f7985237559435cc7cc4eb3f',
     baseUrl: process.env.QNAI_BASE_URL || 'https://api.qnaigc.com/v1',
-    model: process.env.QNAI_MODEL || 'deepseek/deepseek-v3.1-terminus',
+    model: process.env.QNAI_MODEL || 'deepseek-v3.1',
     maxTokens: 2000,
     temperature: 0.8,
     topP: 0.9,

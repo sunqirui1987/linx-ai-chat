@@ -119,8 +119,6 @@ import PersonalitySwitchAnimation from './components/PersonalitySwitchAnimation.
 import MoralSystemPanel from './components/MoralSystemPanel.vue'
 import MemoryCollectionPanel from './components/MemoryCollectionPanel.vue'
 import LoginForm from './components/LoginForm.vue'
-import MemoryPanel from './components/MemoryPanel.vue'
-import MemoryFragmentPanel from './components/MemoryFragmentPanel.vue'
 import AffinityPanel from './components/AffinityPanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import NotificationToast from './components/NotificationToast.vue'
@@ -314,6 +312,16 @@ const sendMessage = async (content: string) => {
       const personalityName = personalityNames[result.currentPersonality] || result.currentPersonality
       showNotification('info', `🔄 人格已自动切换到${personalityName}模式\n原因: ${result.personalityChangeReason}`)
     }
+    
+    // 发送消息成功后刷新好感度数据
+    if (chatStore.currentSessionId) {
+      try {
+        await affinityStore.fetchAffinityData()
+      } catch (error) {
+        console.warn('刷新好感度数据失败:', error)
+        // 不影响主要流程，只记录警告
+      }
+    }
   } catch (error) {
     showNotification('error', '发送消息失败')
   } finally {
@@ -400,7 +408,7 @@ onMounted(async () => {
   } else if (import.meta.env.DEV) {
     // 开发环境自动登录测试用户
     try {
-      await authStore.login('testuser', '123456')
+      await authStore.login({ username: 'testuser', password: '123456' })
       await initializeUserData()
     } catch (error) {
       console.error('自动登录失败:', error)
